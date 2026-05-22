@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AntDesign, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SIZES, FONTS } from '../../constants/theme';
 import { SCREENS } from '../../constants';
-import { loginWithPhone, loginWithGoogleThunk, setUser } from '../../store/slices/authSlice';
+import { loginWithGoogleThunk, setUser } from '../../store/slices/authSlice';
 
 const { width } = Dimensions.get('window');
 
@@ -64,32 +64,10 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { isLoading } = useSelector((state) => state.auth);
 
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [isGoogleModalVisible, setIsGoogleModalVisible] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [selectedGoogleAccount, setSelectedGoogleAccount] = useState(null);
   const [modalAnim] = useState(new Animated.Value(0));
-
-  const handleSendOTP = async () => {
-    const cleanNumber = phoneNumber.replace(/\s+/g, '');
-    if (cleanNumber.length < 10) {
-      Alert.alert('Invalid Number', 'Please enter a valid 10-digit phone number.');
-      return;
-    }
-
-    const fullNumber = `+91${cleanNumber}`;
-
-    try {
-      const result = await dispatch(loginWithPhone({ phoneNumber: fullNumber })).unwrap();
-      // Navigate to OTP screen, passing the phone number and auth mode
-      navigation.navigate(SCREENS.OTP, { 
-        phoneNumber: fullNumber, 
-        authMode: result.mode,
-      });
-    } catch (error) {
-      Alert.alert('Error', error || 'Failed to send OTP. Please try again.');
-    }
-  };
 
   const openGoogleModal = () => {
     setIsGoogleModalVisible(true);
@@ -208,59 +186,7 @@ export default function LoginScreen() {
             {/* Login Card */}
             <View style={[styles.loginCard, styles.shadow]}>
               <Text style={styles.cardTitle}>Welcome back</Text>
-              <Text style={styles.cardSubtitle}>Enter your phone number to continue</Text>
-
-              {/* Phone Input Container */}
-              <View style={styles.phoneInputRow}>
-                {/* Country Code Selector */}
-                <TouchableOpacity style={styles.countrySelector} activeOpacity={0.7}>
-                  <Text style={styles.countryText}>+91</Text>
-                  <Ionicons name="chevron-down" size={14} color="#ffffff" style={styles.chevronIcon} />
-                </TouchableOpacity>
-
-                {/* Input Field */}
-                <TextInput
-                  style={styles.phoneInput}
-                  placeholder="Phone number"
-                  placeholderTextColor="rgba(255, 255, 255, 0.35)"
-                  keyboardType="phone-pad"
-                  value={phoneNumber}
-                  onChangeText={setPhoneNumber}
-                  maxLength={10}
-                  editable={!isLoading}
-                />
-              </View>
-
-              {/* Send OTP Button */}
-              <TouchableOpacity
-                onPress={handleSendOTP}
-                activeOpacity={0.8}
-                style={[styles.otpButtonTouch, isLoading && styles.buttonDisabled]}
-                disabled={isLoading}
-              >
-                <LinearGradient
-                  colors={[COLORS.primary || '#4f6ef7', COLORS.secondary || '#8b5cf6']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.otpButtonGradient}
-                >
-                  {isLoading ? (
-                    <ActivityIndicator size="small" color="#ffffff" />
-                  ) : (
-                    <>
-                      <Text style={styles.otpButtonText}>Send OTP</Text>
-                      <Text style={styles.otpButtonArrow}> →</Text>
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-
-              {/* OR Divider */}
-              <View style={styles.dividerRow}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>OR</Text>
-                <View style={styles.dividerLine} />
-              </View>
+              <Text style={styles.cardSubtitle}>Choose Google Sign-In to join the cosmic circle.</Text>
 
               {/* Google Button */}
               <TouchableOpacity
@@ -415,7 +341,7 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   loginCard: {
-    backgroundColor: 'rgba(45, 16, 84, 0.45)',
+    backgroundColor: '#250e41',
     borderWidth: 1.5,
     borderColor: 'rgba(167, 139, 250, 0.12)',
     borderRadius: 28,

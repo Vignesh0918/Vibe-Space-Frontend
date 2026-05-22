@@ -9,7 +9,7 @@
  *   a fully interactive emoji reaction capsule, share/comment counters, and stylized hashtags.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -21,11 +21,18 @@ import {
   Dimensions,
   StatusBar,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  Animated,
+  Modal,
+  TouchableWithoutFeedback
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSelector } from 'react-redux';
-import { createStory } from '../../services/storyService';
+import { createStory, getCircleStories } from '../../services/storyService';
+import { getUserCircles, createDefaultCircles } from '../../services/circleService';
+import { getHomeFeed } from '../../services/postService';
+import formatTime from '../../utils/formatTime';
+import EmptyState from '../../components/common/EmptyState';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,21 +43,21 @@ import SideDrawer from '../../components/common/SideDrawer';
 
 const { width } = Dimensions.get('window');
 
-const INITIAL_STORIES = [
+const FALLBACK_STORIES = [
   { id: '1', name: 'Your Story', avatar: null, isUser: true },
   { id: '2', name: 'Aarav', avatar: require('../../../assets/aarav_avatar.png'), borderColors: ['#8b5cf6', '#4f6ef7'] },
   { id: '3', name: 'Priya', avatar: require('../../../assets/priya_avatar.png'), borderColors: ['#ec4899', '#8b5cf6'] },
   { id: '4', name: 'Ishaan', avatar: require('../../../assets/ishaan_avatar.png'), borderColors: ['#10b981', '#4f6ef7'] },
 ];
 
-const INITIAL_POSTS = [
+const FALLBACK_POSTS = [
   {
     id: 'post1',
     user: {
       name: 'Aarav Sharma',
       avatar: require('../../../assets/aarav_avatar.png'),
       circle: 'FRIENDS',
-      circleColor: '#8b5cf6', // Purple/Secondary
+      circleColor: '#8b5cf6',
     },
     image: require('../../../assets/post_swirl.png'),
     caption: 'Exploring the new digital frontiers. Loving the energy in the circles today!\n#VibeSpace #DigitalNomad',
@@ -66,7 +73,7 @@ const INITIAL_POSTS = [
       name: 'Priya Kapoor',
       avatar: require('../../../assets/priya_avatar.png'),
       circle: 'CREATIVES',
-      circleColor: '#ec4899', // Pink
+      circleColor: '#ec4899',
     },
     image: require('../../../assets/post_workstation.png'),
     caption: 'Late night setups just hit different. Finally finished the new workstation! 💻✨',
@@ -81,20 +88,204 @@ const INITIAL_POSTS = [
 export default function HomeScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const [posts, setPosts] = useState(INITIAL_POSTS);
-  const [stories, setStories] = useState(INITIAL_STORIES);
+  
+  // States
+  const [posts, setPosts] = useState([]);
+  const [stories, setStories] = useState([]);
   const [isUploadingStory, setIsUploadingStory] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  
+  // API loading states
+  const [postsLoading, setPostsLoading] = useState(true);
+  const [postsRefreshing, setPostsRefreshing] = useState(false);
+  const [storiesLoading, setStoriesLoading] = useState(true);
+  const [lastPostId, setLastPostId] = useState(null);
+  const [hasMorePosts, setHasMorePosts] = useState(true);
+
+  // Story action sheet animated state
+  const [isStorySheetOpen, setIsStorySheetOpen] = useState(false);
+  const storySheetAnim = useRef(new Animated.Value(300)).current;
+
   const currentUser = useSelector((state) => state.auth.user);
 
-  const handleAddStory = async () => {
-    // Open camera directly for sharing a story
-    await launchStoryPicker(true);
+  // Load content
+  const loadStories = async () => {
+    setStoriesLoading(true);
+    try {
+      if (!currentUser?.uid) {
+        setStories([FALLBACK_STORIES[0]]);
+        return;
+      }
+      const circlesRes = await getUserCircles(currentUser.uid);
+      if (circlesRes.success && circlesRes.data) {
+        const circleIds = circlesRes.data.map(c => c._id || c.id);
+        const storiesRes = await getCircleStories(circleIds);
+        if (storiesRes.success && storiesRes.data) {
+          const mappedStories = storiesRes.data.map(group => ({
+            id: group.userId,
+            name: group.userName,
+            avatar: group.userAvatar ? { uri: group.userAvatar } : require('../../../assets/aarav_avatar.png'),
+            borderColors: ['#8b5cf6', '#4f6ef7'],
+            mediaUrl: group.stories[0]?.mediaUrl || '',
+            stories: group.stories || [],
+            isOwn: group.userId === currentUser?.uid
+          }));
+          
+          setStories([
+            { id: 'user_story', name: 'Your Story', avatar: currentUser.photoURL ? { uri: currentUser.photoURL } : null, isUser: true },
+            ...mappedStories
+          ]);
+        } else {
+          setStories([
+            { id: 'user_story', name: 'Your Story', avatar: currentUser.photoURL ? { uri: currentUser.photoURL } : null, isUser: true }
+          ]);
+        }
+      } else {
+        setStories([
+          { id: 'user_story', name: 'Your Story', avatar: currentUser.photoURL ? { uri: currentUser.photoURL } : null, isUser: true }
+        ]);
+      }
+    } catch (error) {
+      console.error('Error loading stories:', error);
+      setStories([
+        { id: 'user_story', name: 'Your Story', avatar: currentUser?.photoURL ? { uri: currentUser.photoURL } : null, isUser: true }
+      ]);
+    } finally {
+      setStoriesLoading(false);
+    }
+  };
+
+  const loadFeed = async (isInitial = true, isRefresh = false) => {
+    if (isInitial) {
+      setPostsLoading(true);
+    } else if (isRefresh) {
+      setPostsRefreshing(true);
+    }
+    
+    try {
+      if (!currentUser?.uid) {
+        setPosts(FALLBACK_POSTS);
+        setPostsLoading(false);
+        setPostsRefreshing(false);
+        return;
+      }
+      
+      const circlesRes = await getUserCircles(currentUser.uid);
+      if (circlesRes.success && circlesRes.data) {
+        const circleIds = circlesRes.data.map(c => c._id || c.id);
+        const startId = isInitial || isRefresh ? null : lastPostId;
+        
+        if (!isInitial && !isRefresh && !hasMorePosts) {
+          setPostsLoading(false);
+          return;
+        }
+
+        const feedRes = await getHomeFeed(circleIds, startId, 10);
+        if (feedRes.success && feedRes.data) {
+          const { posts: apiPosts, lastDoc } = feedRes.data;
+          
+          const mappedPosts = apiPosts.map(post => {
+            let circleColor = '#8b5cf6';
+            const cType = post.circleId?.toLowerCase();
+            if (COLORS.circles && COLORS.circles[cType]) {
+              circleColor = COLORS.circles[cType];
+            }
+
+            return {
+              id: post.id || post._id,
+              user: {
+                name: post.userName,
+                avatar: post.userAvatar ? { uri: post.userAvatar } : require('../../../assets/aarav_avatar.png'),
+                circle: post.circleId?.toUpperCase() || 'FRIENDS',
+                circleColor: circleColor
+              },
+              image: post.imageURL ? { uri: post.imageURL } : require('../../../assets/post_swirl.png'),
+              caption: post.caption || '',
+              time: formatTime(post.createdAt),
+              reactions: ['🔥', '❤️', '😮'],
+              reactionCount: Object.values(post.reactions || {}).flat().length.toString(),
+              hasReacted: Object.values(post.reactions || {}).flat().includes(currentUser.uid),
+              commentsCount: post.commentsCount || 0
+            };
+          });
+
+          if (isInitial || isRefresh) {
+            setPosts(mappedPosts);
+          } else {
+            setPosts(prev => [...prev, ...mappedPosts]);
+          }
+
+          setLastPostId(lastDoc);
+          setHasMorePosts(!!lastDoc && apiPosts.length === 10);
+        } else {
+          if (isInitial || isRefresh) {
+            setPosts(FALLBACK_POSTS);
+          }
+        }
+      } else {
+        if (isInitial || isRefresh) {
+          setPosts(FALLBACK_POSTS);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading feed:', error);
+      if (isInitial || isRefresh) {
+        setPosts(FALLBACK_POSTS);
+      }
+    } finally {
+      setPostsLoading(false);
+      setPostsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+
+    loadStories();
+    loadFeed(true);
+
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadStories();
+      loadFeed(true, true);
+    });
+
+    return unsubscribe;
+  }, [navigation, currentUser?.uid]);
+
+  const openStorySheet = () => {
+    setIsStorySheetOpen(true);
+    Animated.timing(storySheetAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeStorySheet = (callback) => {
+    Animated.timing(storySheetAnim, {
+      toValue: 300,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setIsStorySheetOpen(false);
+      if (typeof callback === 'function') {
+        callback();
+      }
+    });
+  };
+
+  const handleAddStory = () => {
+    openStorySheet();
+  };
+
+  const handleSelectOption = (useCamera) => {
+    closeStorySheet(() => {
+      launchStoryPicker(useCamera);
+    });
   };
 
   const launchStoryPicker = async (useCamera) => {
     try {
-      // Robustly request permissions
       const cameraPerm = await ImagePicker.requestCameraPermissionsAsync();
       const libraryPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -120,7 +311,7 @@ export default function HomeScreen() {
       }
 
       const pickerOptions = {
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         quality: 0.8,
       };
@@ -131,7 +322,6 @@ export default function HomeScreen() {
           result = await ImagePicker.launchCameraAsync(pickerOptions);
         } catch (camError) {
           console.warn('Camera launch failed, falling back to gallery picker:', camError);
-          // Auto-fallback to gallery on simulators/emulators without camera hardware
           result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
         }
       } else {
@@ -155,28 +345,50 @@ export default function HomeScreen() {
       const userName = currentUser?.displayName || 'Aarav';
       const userAvatar = currentUser?.photoURL || '';
 
+      // Resolve the real MongoDB ObjectID for the user's Friends circle
+      let targetCircleId = 'friends';
+      try {
+        const circlesRes = await getUserCircles(userId);
+        if (circlesRes.success && circlesRes.data && circlesRes.data.length > 0) {
+          const friendsCircle = circlesRes.data.find(
+            c => c.name?.toLowerCase() === 'friends' || c.type?.toLowerCase() === 'friends'
+          );
+          if (friendsCircle) {
+            targetCircleId = friendsCircle._id || friendsCircle.id;
+          } else {
+            targetCircleId = circlesRes.data[0]._id || circlesRes.data[0].id;
+          }
+        } else {
+          // If no circles exist, create default circles
+          const initRes = await createDefaultCircles(userId);
+          if (initRes.success && initRes.data && initRes.data.length > 0) {
+            const friendsCircle = initRes.data.find(
+              c => c.name?.toLowerCase() === 'friends' || c.type?.toLowerCase() === 'friends'
+            );
+            if (friendsCircle) {
+              targetCircleId = friendsCircle._id || friendsCircle.id;
+            } else {
+              targetCircleId = initRes.data[0]._id || initRes.data[0].id;
+            }
+          }
+        }
+      } catch (circleError) {
+        console.warn('Failed resolving user circles for story, using fallback:', circleError);
+      }
+
       const storyPayload = {
         userId,
         userName,
         userAvatar,
         mediaUrl: localUri,
-        circleId: 'friends',
+        circleId: targetCircleId,
       };
 
       const response = await createStory(storyPayload);
 
       if (response.success) {
         Alert.alert('Success', 'Story shared successfully!');
-        
-        const newStoryItem = {
-          id: String(Date.now()),
-          name: 'You',
-          avatar: { uri: localUri },
-          borderColors: ['#8b5cf6', '#ec4899'],
-          mediaUrl: response.data?.mediaUrl || localUri
-        };
-        
-        setStories(prev => [prev[0], newStoryItem, ...prev.slice(1)]);
+        loadStories();
       } else {
         Alert.alert('Error', response.error || 'Failed to publish story');
       }
@@ -193,16 +405,21 @@ export default function HomeScreen() {
       prevPosts.map(post => {
         if (post.id === postId) {
           const hasReacted = !post.hasReacted;
-          let reactionCount = post.reactionCount;
-          if (reactionCount === '4.2k') {
-            reactionCount = hasReacted ? '4.3k' : '4.2k';
-          } else if (reactionCount === '856') {
-            reactionCount = hasReacted ? '857' : '856';
+          let count = parseInt(post.reactionCount) || 0;
+          if (isNaN(count)) {
+            if (post.reactionCount === '4.2k') {
+              return { ...post, hasReacted, reactionCount: hasReacted ? '4.3k' : '4.2k' };
+            }
+            if (post.reactionCount === '856') {
+              return { ...post, hasReacted, reactionCount: hasReacted ? '857' : '856' };
+            }
+            count = 0;
           }
+          const nextCount = hasReacted ? count + 1 : Math.max(0, count - 1);
           return {
             ...post,
             hasReacted,
-            reactionCount
+            reactionCount: String(nextCount)
           };
         }
         return post;
@@ -285,7 +502,10 @@ export default function HomeScreen() {
               onPress={() => navigation.navigate(SCREENS.STORY_VIEWER, { 
                 storyUser: item.name,
                 storyAvatar: item.avatar,
-                storyMediaUrl: item.mediaUrl
+                storyMediaUrl: item.mediaUrl,
+                allStories: item.stories || [],
+                isOwnStory: item.isOwn || false,
+                storyId: item.stories?.[0]?.id || null
               })}
             >
               <LinearGradient
@@ -302,6 +522,11 @@ export default function HomeScreen() {
             </TouchableOpacity>
           );
         })}
+        {storiesLoading && (
+          <View style={{ justifyContent: 'center', paddingHorizontal: 20 }}>
+            <ActivityIndicator size="small" color={COLORS.primary || '#8b5cf6'} />
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -387,7 +612,7 @@ export default function HomeScreen() {
       styles.container, 
       { 
         paddingTop: insets.top,
-        paddingBottom: insets.bottom + 80 // Offset for CustomTabBar height
+        paddingBottom: insets.bottom + 80
       }
     ]}>
       <StatusBar barStyle="light-content" />
@@ -400,9 +625,84 @@ export default function HomeScreen() {
         ListHeaderComponent={renderStories}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.feedScroll}
+        ListEmptyComponent={
+          !postsLoading && (
+            <EmptyState 
+              title="No posts yet" 
+              description="Follow some circles to see posts on your feed!" 
+              icon="🖼️" 
+            />
+          )
+        }
+        ListFooterComponent={
+          postsLoading && (
+            <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+              <ActivityIndicator size="small" color={COLORS.primary || '#8b5cf6'} />
+            </View>
+          )
+        }
+        onEndReached={() => loadFeed(false)}
+        onEndReachedThreshold={0.3}
+        refreshing={postsRefreshing}
+        onRefresh={() => {
+          loadStories();
+          loadFeed(true, true);
+        }}
       />
       
       <SideDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+
+      {/* Story Selection Action Sheet Modal */}
+      <Modal
+        visible={isStorySheetOpen}
+        transparent={true}
+        animationType="none"
+        onRequestClose={() => closeStorySheet()}
+      >
+        <TouchableWithoutFeedback onPress={() => closeStorySheet()}>
+          <View style={styles.sheetBackdrop}>
+            <TouchableWithoutFeedback>
+              <Animated.View 
+                style={[
+                  styles.sheetContent,
+                  {
+                    transform: [{ translateY: storySheetAnim }]
+                  }
+                ]}
+              >
+                <View style={styles.sheetHeader}>
+                  <View style={styles.sheetIndicator} />
+                  <Text style={styles.sheetTitle}>Share Story</Text>
+                </View>
+                
+                <TouchableOpacity 
+                  style={styles.sheetOption}
+                  onPress={() => handleSelectOption(true)}
+                >
+                  <Ionicons name="camera-outline" size={22} color="#ffffff" style={styles.sheetOptionIcon} />
+                  <Text style={styles.sheetOptionText}>📷 Take Photo</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.sheetOption}
+                  onPress={() => handleSelectOption(false)}
+                >
+                  <Ionicons name="images-outline" size={22} color="#ffffff" style={styles.sheetOptionIcon} />
+                  <Text style={styles.sheetOptionText}>🖼️ Choose from Gallery</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.sheetOption, styles.sheetOptionLast]}
+                  onPress={() => closeStorySheet()}
+                >
+                  <Ionicons name="close-circle-outline" size={22} color={COLORS.danger || '#ef4444'} style={styles.sheetOptionIcon} />
+                  <Text style={[styles.sheetOptionText, { color: COLORS.danger || '#ef4444' }]}>❌ Cancel</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </View>
   );
 }
@@ -643,5 +943,55 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted || '#a78bfa',
     marginTop: 6,
     opacity: 0.7,
+  },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  sheetContent: {
+    backgroundColor: COLORS.card || '#2d1054',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(167, 139, 250, 0.15)',
+    borderBottomWidth: 0,
+  },
+  sheetHeader: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  sheetIndicator: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginBottom: 8,
+  },
+  sheetTitle: {
+    fontSize: 16,
+    ...FONTS.bold,
+    color: '#ffffff',
+    opacity: 0.8,
+  },
+  sheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(167, 139, 250, 0.15)',
+  },
+  sheetOptionLast: {
+    borderBottomWidth: 0,
+  },
+  sheetOptionIcon: {
+    marginRight: 12,
+  },
+  sheetOptionText: {
+    fontSize: 16,
+    ...FONTS.medium,
+    color: '#ffffff',
   },
 });

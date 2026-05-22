@@ -17,6 +17,10 @@ export const COLORS = {
   warning: '#f59e0b',     // Amber Yellow
   border: '#4c2885',      // Deep Purple Border
   overlay: 'rgba(26, 5, 51, 0.75)', // Translucent Dark Overlay
+  online: '#10b981',      // Online green
+  offline: '#6b7280',     // Offline gray
+  gold: '#eab308',        // Star gold
+  neon: '#a78bfa',        // Purple neon glow
 
   // Circle-specific colors
   circles: {

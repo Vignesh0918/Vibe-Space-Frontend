@@ -29,9 +29,11 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS, SHADOWS } from '../../constants/theme';
+import { getStoryViewers, markStoryViewed } from '../../services/storyService';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const STORY_DURATION = 6000; // ms per story slide
@@ -82,31 +84,67 @@ export default function StoryViewerScreen() {
   const route = useRoute();
   const insets = useSafeAreaInsets();
   const params = route.params || {};
+  const currentUser = useSelector(state => state.auth.user);
 
-  // Construct a dynamic story object if storyMediaUrl is passed
-  const customStory = params.storyMediaUrl ? {
-    user: {
-      name: params.storyUser || 'You',
-      avatar: params.storyAvatar || require('../../../assets/aarav_avatar.png'),
-    },
-    slides: [
-      {
-        id: 'custom_slide',
-        image: typeof params.storyMediaUrl === 'string' ? { uri: params.storyMediaUrl } : params.storyMediaUrl,
-        time: 'Just now',
-        location: 'Mumbai',
-        trending: false
-      }
-    ]
-  } : null;
+  // Determine slides from either allStories, storyMediaUrl, or fallback STORIES_DATA
+  let story = null;
+  if (params.allStories && params.allStories.length > 0) {
+    story = {
+      user: {
+        name: params.storyUser || 'You',
+        avatar: params.storyAvatar || require('../../../assets/aarav_avatar.png'),
+      },
+      slides: params.allStories.map((s, index) => {
+        let formattedTime = 'Just now';
+        if (s.createdAt) {
+          const diff = new Date() - new Date(s.createdAt);
+          const minutes = Math.floor(diff / 60000);
+          const hours = Math.floor(minutes / 60);
+          if (minutes < 1) {
+            formattedTime = 'Just now';
+          } else if (minutes < 60) {
+            formattedTime = `${minutes}m ago`;
+          } else if (hours < 24) {
+            formattedTime = `${hours}h ago`;
+          } else {
+            formattedTime = `${Math.floor(hours / 24)}d ago`;
+          }
+        }
+        return {
+          id: s._id || s.id || `slide_${index}`,
+          image: typeof s.mediaUrl === 'string' ? { uri: s.mediaUrl } : s.mediaUrl,
+          time: formattedTime,
+          location: s.location || 'Circles',
+          trending: s.trending || false,
+        };
+      })
+    };
+  } else if (params.storyMediaUrl) {
+    story = {
+      user: {
+        name: params.storyUser || 'You',
+        avatar: params.storyAvatar || require('../../../assets/aarav_avatar.png'),
+      },
+      slides: [
+        {
+          id: 'custom_slide',
+          image: typeof params.storyMediaUrl === 'string' ? { uri: params.storyMediaUrl } : params.storyMediaUrl,
+          time: 'Just now',
+          location: 'Mumbai',
+          trending: false
+        }
+      ]
+    };
+  } else {
+    story = STORIES_DATA[0];
+  }
 
   // Current story set and slide index
-  const [storyIndex] = useState(0);
   const [slideIndex, setSlideIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [replyText, setReplyText] = useState('');
+  const [viewerCount, setViewerCount] = useState(0);
 
-  const story = customStory || STORIES_DATA[storyIndex];
   const slide = story.slides[slideIndex];
   const totalSlides = story.slides.length;
 
@@ -136,6 +174,33 @@ export default function StoryViewerScreen() {
       if (animRef.current) animRef.current.stop();
     };
   }, [slideIndex, isPaused]);
+
+  // Fetch viewer count when viewing own story
+  useEffect(() => {
+    const fetchViewers = async () => {
+      if (slide?.id && slide.id !== 'custom_slide') {
+        const result = await getStoryViewers(slide.id);
+        if (result.success) {
+          setViewerCount(result.totalViews || 0);
+        }
+      }
+    };
+    if (params.isOwnStory) {
+      fetchViewers();
+    }
+  }, [slide?.id]);
+
+  // Mark story as viewed when watching someone else's story
+  useEffect(() => {
+    const markViewed = async () => {
+      if (slide?.id && slide.id !== 'custom_slide' && !params.isOwnStory) {
+        if (currentUser?.uid) {
+          await markStoryViewed(slide.id, currentUser.uid);
+        }
+      }
+    };
+    markViewed();
+  }, [slide?.id]);
 
   const goNext = () => {
     if (slideIndex < totalSlides - 1) {
@@ -240,6 +305,16 @@ export default function StoryViewerScreen() {
 
   const renderBottomBar = () => (
     <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
+      {/* Viewers count badge (only on own stories) */}
+      {params.isOwnStory && viewerCount > 0 && (
+        <View style={styles.viewersBadge}>
+          <Ionicons name="eye-outline" size={16} color="#ffffff" style={{ marginRight: 6 }} />
+          <Text style={styles.viewersText}>
+            {viewerCount} {viewerCount === 1 ? 'view' : 'views'}
+          </Text>
+        </View>
+      )}
+
       {/* Trending badge */}
       {slide.trending && (
         <View style={styles.trendingBadge}>
@@ -497,5 +572,24 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+
+  /* Viewers badge */
+  viewersBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(30, 12, 50, 0.75)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.2)',
+  },
+  viewersText: {
+    color: '#ffffff',
+    fontSize: 13,
+    ...FONTS.medium,
   },
 });

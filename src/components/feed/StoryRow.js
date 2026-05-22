@@ -1,15 +1,47 @@
 import React from 'react';
-import { StyleSheet, ScrollView, Text } from 'react-native';
+import { StyleSheet, ScrollView, View } from 'react-native';
+import StoryCircle from './StoryCircle';
+import { SIZES } from '../../constants/theme';
 
-export default function StoryRow() {
+/**
+ * StoryRow Component
+ * Renders a horizontal scrolling list of StoryCircle components,
+ * starting with the User Add Story button.
+ */
+export default function StoryRow({ stories = [], onAddStory, onStoryPress, isUploadingStory }) {
   return (
-    <ScrollView horizontal style={styles.row}>
-      <Text style={styles.text}>Story Row Component</Text>
-    </ScrollView>
+    <View style={styles.container}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContainer}
+      >
+        {stories.map((story) => (
+          <StoryCircle
+            key={story.id}
+            item={story}
+            onPress={() => {
+              if (story.isUser) {
+                onAddStory && onAddStory();
+              } else {
+                onStoryPress && onStoryPress(story);
+              }
+            }}
+            isUploading={story.isUser ? isUploadingStory : false}
+          />
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', padding: 8 },
-  text: { color: '#fff' }
+  container: {
+    paddingVertical: SIZES.spacingMd || 16,
+    borderBottomWidth: 1.5,
+    borderBottomColor: 'rgba(76, 40, 133, 0.3)',
+  },
+  scrollContainer: {
+    paddingHorizontal: SIZES.spacingMd || 16,
+  },
 });

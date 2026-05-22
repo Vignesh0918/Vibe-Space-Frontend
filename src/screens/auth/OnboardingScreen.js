@@ -1,5 +1,14 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, Image, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  Image,
+  TouchableOpacity,
+  Dimensions,
+  Animated,
+  Easing,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,45 +16,138 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SIZES, FONTS } from '../../constants/theme';
 import { SCREENS } from '../../constants';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const slides = [
   {
     title: 'Create Your Circles',
-    subtitle: 'Separate your friends, family and work life for a cleaner experience.',
+    subtitle: 'Separate your friends, family and work life\nfor a cleaner experience.',
   },
   {
     title: 'Chats That Vanish',
-    subtitle: 'Set messages to auto-delete. Privacy first.',
+    subtitle: 'Set messages to auto-delete.\nPrivacy first.',
   },
   {
     title: 'Share Your Vibe',
-    subtitle: 'Song of the day, mood status and more. Connect through the rhythm of your life.',
+    subtitle: 'Song of the day, mood status and more.\nConnect through the rhythm of your life.',
   }
 ];
 
 /**
  * OnboardingScreen
- * Matches the Stitch/Figma UI design with a 3-step slideshow:
- * - Top header with branding and SKIP link
- * - Dynamic graphics for each slide:
- *   - Slide 0: Neon space circles image (assets/onboarding_circles.png)
- *   - Slide 1: Glassmorphism Chats That Vanish mockup (custom vector drawing)
- *   - Slide 2: Custom "Share Your Vibe" central ring with floating glowing emoji nodes
- * - Glassmorphic details card
- * - Interactive page pagination indicators
- * - Glowing gradient Next/Get Started button
+ *
+ * Premium 3-step onboarding with:
+ * - Slide 0: Orbiting circles illustration with glow effects
+ * - Slide 1: Glassmorphism "Vanish Mode" card with floating timer
+ * - Slide 2: Floating emoji constellation around a dashed orbit ring
+ * - Animated transitions, pagination dots, gradient CTA button
  */
 export default function OnboardingScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
 
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const orbitAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const floatAnim = useRef(new Animated.Value(0)).current;
+
+  // Continuous orbit rotation
+  useEffect(() => {
+    Animated.loop(
+      Animated.timing(orbitAnim, {
+        toValue: 1,
+        duration: 20000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    ).start();
+  }, []);
+
+  // Continuous pulse for the center icon
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.12,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  // Floating animation for vanish card
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, {
+          toValue: -8,
+          duration: 2000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim, {
+          toValue: 0,
+          duration: 2000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  const animateTransition = (newStep) => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: -30,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setStep(newStep);
+      slideAnim.setValue(30);
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  };
+
   const handleNext = () => {
     if (step < 2) {
-      setStep(step + 1);
+      animateTransition(step + 1);
     } else {
       navigation.navigate(SCREENS.LOGIN);
+    }
+  };
+
+  const handleDotPress = (index) => {
+    if (index !== step) {
+      animateTransition(index);
     }
   };
 
@@ -55,131 +157,204 @@ export default function OnboardingScreen() {
 
   const activeSlide = slides[step];
 
-  // Step 1: Render custom chat bubble graphic matching the mockup screenshot
+  // Orbit rotation interpolation
+  const orbitRotation = orbitAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  // ─── Slide 0: Circles Illustration ───
+  const renderCirclesGraphic = () => (
+    <View style={styles.graphicCenter}>
+      <Image
+        source={require('../../../assets/onboarding_circles.png')}
+        style={styles.circlesImage}
+        resizeMode="contain"
+      />
+    </View>
+  );
+
+  // ─── Slide 1: Vanish Mode ───
   const renderChatsGraphic = () => (
-    <View style={styles.chatGraphicContainer}>
-      {/* Receiver Bubble Row */}
-      <View style={styles.chatRowLeft}>
-        <View style={styles.receiverBubble}>
-          <Ionicons 
-            name="hourglass-outline" 
-            size={16} 
-            color={COLORS.textMuted || '#a78bfa'} 
-            style={styles.receiverIcon} 
-          />
-          <Text style={styles.receiverText}>Did you see that post?</Text>
-        </View>
-        <View style={styles.shutterIconOuter}>
-          <MaterialCommunityIcons 
-            name="aperture" 
-            size={18} 
-            color={COLORS.textMuted || '#a78bfa'} 
-          />
-        </View>
-      </View>
+    <View style={styles.graphicCenter}>
+      {/* Glassmorphism container */}
+      <Animated.View style={[
+        styles.vanishOuterCard,
+        { transform: [{ translateY: floatAnim }] }
+      ]}>
+        <View style={styles.vanishInnerCard}>
+          {/* Clock icon circle */}
+          <View style={styles.vanishClockContainer}>
+            <LinearGradient
+              colors={['#7c5bf5', '#6366f1']}
+              style={styles.vanishClockGradient}
+            >
+              <Ionicons name="time-outline" size={28} color="#ffffff" />
+            </LinearGradient>
+          </View>
 
-      {/* Sender Bubble Row */}
-      <View style={styles.chatRowRight}>
-        <LinearGradient
-          colors={['#5b75fa', '#9873ff']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.senderBubble}
-        >
-          <Text style={styles.senderText}>Yeah, it was insane! ⚡ </Text>
-          <MaterialCommunityIcons 
-            name="history" 
-            size={16} 
-            color="#ffffff" 
-            style={styles.senderIcon} 
-          />
-        </LinearGradient>
-      </View>
+          <Text style={styles.vanishTitle}>Vanish Mode</Text>
+          <Text style={styles.vanishSubtext}>Messages disappear after 24h</Text>
 
-      {/* Vanish Mode Overlay Card */}
-      <View style={[styles.vanishOverlayCard, styles.shadow]}>
-        <View style={styles.vanishIconBg}>
-          <MaterialCommunityIcons 
-            name="timer-outline" 
-            size={24} 
-            color="#ffffff" 
-          />
+          {/* Floating refresh icon */}
+          <View style={styles.vanishRefreshIcon}>
+            <MaterialCommunityIcons name="restore" size={18} color="#6366f1" />
+          </View>
         </View>
-        <Text style={styles.vanishCardTitle}>Vanish Mode</Text>
-        <Text style={styles.vanishCardSubtitle}>Messages disappear after 24h</Text>
-      </View>
+      </Animated.View>
     </View>
   );
 
-  // Step 2: Render custom Share Your Vibe graphic matching the latest mockup
-  const renderVibeGraphic = () => (
-    <View style={styles.vibeGraphicContainer}>
-      {/* Central Ring */}
-      <View style={styles.vibeCentralRing}>
-        {/* Floating Vibe Nodes */}
-        <View style={[styles.vibeNode, styles.vibeNodeFire]}>
-          <Text style={styles.vibeNodeEmoji}>🔥</Text>
+  // ─── Slide 2: Share Your Vibe ───
+  const renderVibeGraphic = () => {
+    // Orbit radius
+    const orbitR = width * 0.32;
+
+    return (
+      <View style={styles.graphicCenter}>
+        {/* Dashed orbit ring */}
+        <View style={[styles.orbitRing, { width: orbitR * 2, height: orbitR * 2, borderRadius: orbitR }]}>
+          {/* Inner smaller dashed ring */}
+          <View style={[styles.orbitRingInner, {
+            width: orbitR * 1.3,
+            height: orbitR * 1.3,
+            borderRadius: orbitR * 0.65,
+          }]} />
         </View>
-        <View style={[styles.vibeNode, styles.vibeNodeSparkles]}>
-          <Text style={[styles.vibeNodeEmoji, { fontSize: 26 }]}>✨</Text>
-        </View>
-        <View style={[styles.vibeNode, styles.vibeNodeWave]}>
-          <Text style={[styles.vibeNodeEmoji, { fontSize: 24 }]}>🌊</Text>
-        </View>
-        <View style={[styles.vibeNode, styles.vibeNodeHeadphones]}>
-          <Text style={styles.vibeNodeEmoji}>🎧</Text>
-        </View>
+
+        {/* Central music icon with pulse */}
+        <Animated.View style={[
+          styles.vibeCenterIcon,
+          { transform: [{ scale: pulseAnim }] }
+        ]}>
+          <LinearGradient
+            colors={['rgba(139, 92, 246, 0.25)', 'rgba(99, 102, 241, 0.15)']}
+            style={styles.vibeCenterGradient}
+          >
+            <Ionicons name="musical-note" size={36} color="#c4b5fd" />
+          </LinearGradient>
+        </Animated.View>
+
+        {/* Floating emoji nodes at fixed orbital positions */}
+        {/* Fire - top */}
+        <Animated.View style={[
+          styles.vibeNodeWrapper,
+          {
+            top: -orbitR * 0.15,
+            left: '50%',
+            marginLeft: -2,
+            transform: [{ translateY: floatAnim }],
+          }
+        ]}>
+          <View style={[styles.vibeNode, styles.vibeNodeFire]}>
+            <Text style={styles.vibeEmoji}>🔥</Text>
+          </View>
+        </Animated.View>
+
+        {/* Wave - left */}
+        <Animated.View style={[
+          styles.vibeNodeWrapper,
+          {
+            top: '40%',
+            left: -orbitR * 0.45,
+            transform: [{
+              translateY: Animated.multiply(floatAnim, -1)
+            }],
+          }
+        ]}>
+          <View style={[styles.vibeNode, styles.vibeNodeWave]}>
+            <Text style={styles.vibeEmoji}>🌊</Text>
+          </View>
+        </Animated.View>
+
+        {/* Sparkles - right */}
+        <Animated.View style={[
+          styles.vibeNodeWrapper,
+          {
+            top: '18%',
+            right: -orbitR * 0.35,
+            transform: [{ translateY: floatAnim }],
+          }
+        ]}>
+          <View style={[styles.vibeNode, styles.vibeNodeSparkles]}>
+            <Text style={[styles.vibeEmoji, { fontSize: 22 }]}>✨</Text>
+          </View>
+        </Animated.View>
+
+        {/* Headphones - bottom right */}
+        <Animated.View style={[
+          styles.vibeNodeWrapper,
+          {
+            bottom: '5%',
+            right: -orbitR * 0.15,
+            transform: [{
+              translateY: Animated.multiply(floatAnim, -0.7)
+            }],
+          }
+        ]}>
+          <View style={[styles.vibeNode, styles.vibeNodeHeadphones]}>
+            <Text style={styles.vibeEmoji}>🎧</Text>
+          </View>
+        </Animated.View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={[
-      styles.wrapper, 
-      { 
+      styles.wrapper,
+      {
         paddingTop: insets.top,
         paddingBottom: insets.bottom,
-        paddingLeft: insets.left,
-        paddingRight: insets.right,
       }
     ]}>
       <LinearGradient
-        colors={[COLORS.background || '#1a0533', '#0e031a']}
+        colors={['#1a0a35', '#0f0520', '#0a0318']}
+        locations={[0, 0.5, 1]}
         style={styles.gradientContainer}
       >
-        {/* Header Bar */}
+        {/* ── Header ── */}
         <View style={styles.header}>
-          <Text style={styles.brandText}>VibeSpace</Text>
+          <Text style={styles.brandText}>
+            <Text style={styles.brandVibe}>Vibe</Text>
+            <Text style={styles.brandSpace}>Space</Text>
+          </Text>
           <TouchableOpacity onPress={handleSkip} activeOpacity={0.7}>
             <Text style={styles.skipText}>Skip</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Illustration Area */}
-        <View style={styles.illustrationContainer}>
-          {step === 0 && (
-            <Image
-              source={require('../../../assets/onboarding_circles.png')}
-              style={styles.illustrationImage}
-              resizeMode="contain"
-            />
-          )}
+        {/* ── Illustration Area ── */}
+        <Animated.View style={[
+          styles.illustrationContainer,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+          }
+        ]}>
+          {step === 0 && renderCirclesGraphic()}
           {step === 1 && renderChatsGraphic()}
           {step === 2 && renderVibeGraphic()}
-        </View>
+        </Animated.View>
 
-        {/* Glassmorphic Info Card */}
-        <View style={[styles.infoCard, styles.shadow]}>
+        {/* ── Info Card ── */}
+        <Animated.View style={[
+          styles.infoCard,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+          }
+        ]}>
           <Text style={styles.cardTitle}>{activeSlide.title}</Text>
           <Text style={styles.cardSubtitle}>{activeSlide.subtitle}</Text>
-        </View>
+        </Animated.View>
 
-        {/* Page Indicators */}
+        {/* ── Pagination Dots ── */}
         <View style={styles.indicatorsRow}>
           {slides.map((_, index) => (
             <TouchableOpacity
               key={index}
-              onPress={() => setStep(index)}
+              onPress={() => handleDotPress(index)}
               activeOpacity={0.7}
               style={[
                 styles.indicatorDot,
@@ -189,14 +364,14 @@ export default function OnboardingScreen() {
           ))}
         </View>
 
-        {/* Gradient Next Button */}
+        {/* ── CTA Button ── */}
         <TouchableOpacity
           onPress={handleNext}
-          activeOpacity={0.8}
+          activeOpacity={0.85}
           style={styles.buttonTouch}
         >
           <LinearGradient
-            colors={[COLORS.primary || '#4f6ef7', COLORS.secondary || '#8b5cf6']}
+            colors={['#6366f1', '#8b5cf6', '#a78bfa']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.buttonGradient}
@@ -212,256 +387,184 @@ export default function OnboardingScreen() {
   );
 }
 
+/* ─────────────────────────── Styles ─────────────────────────── */
+
 const styles = StyleSheet.create({
   wrapper: {
     flex: 1,
-    backgroundColor: COLORS.background || '#1a0533',
+    backgroundColor: '#1a0a35',
   },
   gradientContainer: {
     flex: 1,
-    paddingHorizontal: SIZES.spacingLg || 24,
+    paddingHorizontal: 28,
     justifyContent: 'space-between',
-    paddingBottom: 30,
+    paddingBottom: 32,
   },
+
+  /* ── Header ── */
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    height: 60,
-    marginTop: 10,
+    height: 56,
+    marginTop: 8,
   },
   brandText: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  brandVibe: {
     color: '#818cf8',
-    letterSpacing: 0.5,
+  },
+  brandSpace: {
+    color: '#6366f1',
   },
   skipText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    color: COLORS.textMuted || '#a78bfa',
-    letterSpacing: 0.5,
+    color: 'rgba(255, 255, 255, 0.55)',
+    letterSpacing: 0.3,
   },
+
+  /* ── Illustration ── */
   illustrationContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    maxHeight: width * 0.85,
-    marginVertical: 10,
+    maxHeight: height * 0.45,
+    marginVertical: 8,
   },
-  illustrationImage: {
-    width: '100%',
-    height: '100%',
-  },
-  
-  // Custom Chat Graphic styles
-  chatGraphicContainer: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  chatRowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    marginBottom: 20,
-    marginTop: 10,
-  },
-  receiverBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(45, 16, 84, 0.45)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(167, 139, 250, 0.15)',
-    borderRadius: 20,
-    borderBottomLeftRadius: 4,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    shadowColor: COLORS.secondary || '#8b5cf6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  receiverIcon: {
-    marginRight: 8,
-  },
-  receiverText: {
-    color: COLORS.text || '#ffffff',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  shutterIconOuter: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1.5,
-    borderColor: 'rgba(167, 139, 250, 0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 10,
-    backgroundColor: 'rgba(167, 139, 250, 0.08)',
-  },
-  chatRowRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-end',
-    marginBottom: 40,
-  },
-  senderBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 20,
-    borderBottomRightRadius: 4,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    shadowColor: COLORS.primary || '#4f6ef7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  senderIcon: {
-    marginLeft: 6,
-  },
-  senderText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  vanishOverlayCard: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: '25%',
-    width: 240,
-    backgroundColor: 'rgba(26, 5, 51, 0.95)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(139, 92, 246, 0.35)',
-    borderRadius: 24,
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    shadowColor: COLORS.secondary || '#8b5cf6',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.4,
-    shadowRadius: 15,
-    elevation: 10,
-  },
-  vanishIconBg: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#8b5cf6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-    shadowColor: '#8b5cf6',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  vanishCardTitle: {
-    color: COLORS.text || '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  vanishCardSubtitle: {
-    color: COLORS.textMuted || '#a78bfa',
-    fontSize: 12,
-    fontWeight: '500',
-    opacity: 0.85,
-    textAlign: 'center',
-  },
-
-  // Custom "Share Your Vibe" Graphic styles
-  vibeGraphicContainer: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  vibeCentralRing: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+  graphicCenter: {
+    width: width * 0.85,
+    height: width * 0.85,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
   },
-  vibeNode: {
-    position: 'absolute',
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: 'rgba(30, 20, 50, 0.65)',
-    borderWidth: 1.5,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 5,
-  },
-  vibeNodeFire: {
-    top: 5,
-    left: 10,
-    borderColor: '#f97316',
-    shadowColor: '#f97316',
-  },
-  vibeNodeSparkles: {
-    top: 25,
-    right: -10,
-    borderColor: '#eab308',
-    shadowColor: '#eab308',
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-  },
-  vibeNodeWave: {
-    bottom: 95,
-    left: -20,
-    borderColor: '#3b82f6',
-    shadowColor: '#3b82f6',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  vibeNodeHeadphones: {
-    bottom: 25,
-    right: 15,
-    borderColor: '#8b5cf6',
-    shadowColor: '#8b5cf6',
-  },
-  vibeNodeEmoji: {
-    fontSize: 20,
+
+  /* ── Slide 0: Circles ── */
+  circlesImage: {
+    width: '100%',
+    height: '100%',
   },
 
-  // Info Card styles
-  infoCard: {
-    backgroundColor: 'rgba(45, 16, 84, 0.65)',
-    borderWidth: 1,
-    borderColor: COLORS.border || '#4c2885',
-    borderRadius: SIZES.radiusLg || 16,
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    marginVertical: 10,
+  /* ── Slide 1: Vanish Mode ── */
+  vanishOuterCard: {
+    width: width * 0.78,
+    backgroundColor: '#1d0c35',
+    borderRadius: 24,
+    padding: 0,
+    overflow: 'hidden',
   },
-  shadow: {
-    shadowColor: COLORS.secondary || '#8b5cf6',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 5,
+  vanishInnerCard: {
+    backgroundColor: 'transparent',
+    borderRadius: 20,
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  vanishClockContainer: {
+    marginBottom: 18,
+  },
+  vanishClockGradient: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  vanishTitle: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+    letterSpacing: 0.3,
+  },
+  vanishSubtext: {
+    color: 'rgba(167, 139, 250, 0.75)',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  vanishRefreshIcon: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(99, 102, 241, 0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  /* ── Slide 2: Share Your Vibe ── */
+  orbitRing: {
+    position: 'absolute',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.12)',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  orbitRingInner: {
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.08)',
+    borderStyle: 'dashed',
+  },
+  vibeCenterIcon: {
+    position: 'absolute',
+    zIndex: 5,
+  },
+  vibeCenterGradient: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  vibeNodeWrapper: {
+    position: 'absolute',
+    zIndex: 10,
+  },
+  vibeNode: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  vibeNodeFire: {
+    backgroundColor: 'rgba(120, 50, 10, 0.85)',
+  },
+  vibeNodeWave: {
+    backgroundColor: 'rgba(20, 60, 130, 0.85)',
+  },
+  vibeNodeSparkles: {
+    backgroundColor: 'rgba(100, 80, 20, 0.85)',
+  },
+  vibeNodeHeadphones: {
+    backgroundColor: 'rgba(60, 30, 100, 0.85)',
+  },
+  vibeEmoji: {
+    fontSize: 22,
+  },
+
+  /* ── Info Card ── */
+  infoCard: {
+    backgroundColor: '#1d0c35',
+    borderRadius: 20,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    marginBottom: 6,
+    overflow: 'hidden',
   },
   cardTitle: {
-    fontSize: 24,
-    ...FONTS.bold,
+    fontSize: 26,
+    fontWeight: '800',
     color: '#ffffff',
     textAlign: 'center',
     marginBottom: 12,
@@ -469,18 +572,19 @@ const styles = StyleSheet.create({
   },
   cardSubtitle: {
     fontSize: 14,
-    ...FONTS.regular,
-    color: COLORS.textMuted || '#a78bfa',
+    fontWeight: '400',
+    color: 'rgba(167, 139, 250, 0.8)',
     textAlign: 'center',
-    lineHeight: 20,
-    opacity: 0.85,
+    lineHeight: 22,
   },
+
+  /* ── Pagination ── */
   indicatorsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    height: 20,
-    marginVertical: 15,
+    height: 24,
+    marginVertical: 16,
   },
   indicatorDot: {
     width: 8,
@@ -490,15 +594,18 @@ const styles = StyleSheet.create({
     marginHorizontal: 5,
   },
   activeDot: {
-    backgroundColor: COLORS.primary || '#4f6ef7',
-    width: 20,
+    backgroundColor: '#6366f1',
+    width: 24,
+    borderRadius: 4,
   },
+
+  /* ── CTA Button ── */
   buttonTouch: {
     width: '100%',
-    height: SIZES.buttonHeight || 52,
-    borderRadius: SIZES.radiusFull || 999,
+    height: 56,
+    borderRadius: 28,
     overflow: 'hidden',
-    marginTop: 10,
+    marginTop: 4,
   },
   buttonGradient: {
     flex: 1,
@@ -507,13 +614,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   buttonText: {
-    fontSize: 16,
-    ...FONTS.bold,
+    fontSize: 17,
+    fontWeight: '700',
     color: '#ffffff',
     letterSpacing: 0.5,
   },
   buttonArrow: {
-    fontSize: 16,
+    fontSize: 17,
+    fontWeight: '700',
     color: '#ffffff',
   },
 });

@@ -5,6 +5,7 @@
  */
 
 import apiClient from '../config/api';
+import { uploadFile } from './storageService';
 
 /**
  * Creates a new custom circle in MongoDB via Express API.
@@ -147,3 +148,84 @@ export function listenToUserCircles(userId, callback) {
     if (intervalId) clearInterval(intervalId);
   };
 }
+
+/**
+ * Updates an existing Circle.
+ * Handles local file upload for the avatar if needed.
+ * @param {string} circleId - Target circle ID.
+ * @param {object} data - Updated circle fields (name, description, type, isPublic, tags, avatar).
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function updateCircle(circleId, data) {
+  try {
+    const updateData = { ...data };
+    if (updateData.avatar && (updateData.avatar.startsWith('file://') || updateData.avatar.startsWith('content://'))) {
+      const uploadRes = await uploadFile(updateData.avatar, `circles/${circleId}/avatar`);
+      if (uploadRes.success) {
+        updateData.avatar = uploadRes.data;
+      } else {
+        return { success: false, error: `Failed to upload circle avatar: ${uploadRes.error}` };
+      }
+    }
+    const response = await apiClient.put(`/circles/${circleId}`, updateData);
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Generates an invite code for a circle.
+ * @param {string} circleId - Target circle ID.
+ * @returns {Promise<{success: boolean, data?: string, error?: string}>}
+ */
+export async function generateInviteCode(circleId) {
+  try {
+    const response = await apiClient.post(`/circles/${circleId}/invite`);
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Joins a circle by invite code.
+ * @param {string} inviteCode - The 8-character invite code.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function joinCircleByCode(inviteCode) {
+  try {
+    const response = await apiClient.post('/circles/join', { inviteCode });
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Gets all user profile members of a specific circle.
+ * @param {string} circleId - Circle ID.
+ * @returns {Promise<{success: boolean, data?: array, error?: string}>}
+ */
+export async function getCircleMembers(circleId) {
+  try {
+    const response = await apiClient.get(`/circles/${circleId}/members`);
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Retrieves public recommended circles that the user is not a member of.
+ * @returns {Promise<{success: boolean, data?: array, error?: string}>}
+ */
+export async function getRecommendedCircles() {
+  try {
+    const response = await apiClient.get('/circles/recommended');
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+

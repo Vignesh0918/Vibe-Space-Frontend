@@ -66,7 +66,6 @@ export const SCREENS = {
   SPLASH: 'SplashScreen',
   ONBOARDING: 'OnboardingScreen',
   LOGIN: 'LoginScreen',
-  OTP: 'OTPScreen',
   PROFILE_SETUP: 'ProfileSetupScreen',
 
   // Main Navigator Tab / Root Stacks
@@ -90,6 +89,11 @@ export const SCREENS = {
   NEARBY_VIBES: 'NearbyVibesScreen',
   STORY_VIEWER: 'StoryViewerScreen',
   POST_DETAIL: 'PostDetailScreen',
+  VIBE_DETAIL: 'VibeDetailScreen',
+  USER_PROFILE: 'UserProfileScreen',
+  FOLLOWERS: 'FollowersScreen',
+  FOLLOWING: 'FollowingScreen',
+  BOOKMARKS: 'BookmarksScreen',
 
   // Settings Stack Screens
   SETTINGS: 'SettingsScreen',
@@ -97,3 +101,11 @@ export const SCREENS = {
   CHAT_EXPIRY: 'ChatExpiryScreen',
   CREATE_CIRCLE: 'CreateCircleScreen',
 };
+
+// Pagination and App Defaults
+export const FEED_PAGE_SIZE = 10;
+export const CHAT_PAGE_SIZE = 20;
+export const SEARCH_DEBOUNCE_MS = 400;
+export const STORY_DURATION_MS = 5000;
+export const VOICE_MAX_DURATION_S = 60;
+

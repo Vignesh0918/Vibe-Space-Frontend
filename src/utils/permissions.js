@@ -6,6 +6,7 @@
 
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { Audio } from 'expo-av';
 
 /**
  * Requests device camera permission.
@@ -45,3 +46,26 @@ export async function requestLocationPermission() {
     return { success: false, error: error.message };
   }
 }
+
+/**
+ * Requests device microphone permission.
+ * @returns {Promise<{success: boolean, status: string, error?: string}>}
+ */
+export async function requestMicrophonePermission() {
+  try {
+    const { status } = await Audio.requestPermissionsAsync();
+    return { success: status === 'granted', status };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Requests notification permissions.
+ * Resolves to a placeholder granted state for local testing.
+ * @returns {Promise<{success: boolean, status: string}>}
+ */
+export async function requestNotificationPermission() {
+  return { success: true, status: 'granted' };
+}
+

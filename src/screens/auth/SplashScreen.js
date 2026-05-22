@@ -68,7 +68,7 @@ export default function SplashScreen() {
 
           {/* Glowing Shutter Icon */}
           <Animated.View style={[styles.iconWrapper, { transform: [{ scale: pulseAnim }] }]}>
-            <Ionicons name="aperture" size={80} color="#8b5cf6" />
+            <Ionicons name="planet-outline" size={80} color="#8b5cf6" />
           </Animated.View>
 
           {/* Branding Texts */}

@@ -76,7 +76,7 @@ export default function ProfileSetupScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -195,7 +195,7 @@ export default function ProfileSetupScreen() {
                   {avatarUri ? (
                     <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
                   ) : (
-                    <Ionicons name="aperture" size={40} color="#818cf8" />
+                    <Ionicons name="person-circle-outline" size={40} color="#818cf8" />
                   )}
                 </View>
                 <View style={styles.plusButton}>
@@ -377,7 +377,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: 'rgba(45, 16, 84, 0.45)',
+    backgroundColor: '#250e41',
     borderWidth: 1.5,
     borderColor: 'rgba(167, 139, 250, 0.25)',
     justifyContent: 'center',
@@ -418,13 +418,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   inputBox: {
-    backgroundColor: 'rgba(45, 16, 84, 0.45)',
+    backgroundColor: '#250e41',
     borderWidth: 1.5,
     borderColor: 'rgba(167, 139, 250, 0.15)',
     borderRadius: 16,
     height: 52,
     paddingHorizontal: 16,
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   bioBox: {
     height: 100,
@@ -459,16 +460,17 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 27,
-    backgroundColor: 'rgba(45, 16, 84, 0.45)',
+    backgroundColor: '#250e41',
     borderWidth: 1.5,
     borderColor: 'rgba(167, 139, 250, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 6,
+    overflow: 'hidden',
   },
   vibeCircleSelected: {
     borderColor: '#818cf8',
-    backgroundColor: 'rgba(129, 140, 248, 0.15)',
+    backgroundColor: '#351c5e',
     shadowColor: '#818cf8',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.6,
@@ -492,13 +494,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(22, 10, 42, 0.95)',
+    backgroundColor: '#160a2a',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: 1.5,
     borderColor: 'rgba(167, 139, 250, 0.12)',
     paddingHorizontal: 24,
     paddingTop: 20,
+    overflow: 'hidden',
   },
   continueButtonTouch: {
     width: '100%',

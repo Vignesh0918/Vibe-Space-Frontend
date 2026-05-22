@@ -13,7 +13,7 @@
  *   - Trending tag, club name, active members indicator, and gradient "Join" CTA.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -22,61 +22,148 @@ import {
   TouchableOpacity, 
   Image, 
   Dimensions,
-  StatusBar
+  StatusBar,
+  ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSelector } from 'react-redux';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
 import { SCREENS } from '../../constants';
 import SideDrawer from '../../components/common/SideDrawer';
+import { listenToUserCircles } from '../../services/circleService';
 
 const { width } = Dimensions.get('window');
+
+const FALLBACK_CIRCLES = [
+  {
+    id: 'friends',
+    name: 'Friends',
+    members: '12 members',
+    activeTime: 'Active 2m ago',
+    iconName: 'happy-outline',
+    iconType: 'ionicons',
+    color: COLORS.circles.friends || '#10b981',
+  },
+  {
+    id: 'family',
+    name: 'Family',
+    members: '5 members',
+    activeTime: 'Active 1h ago',
+    iconName: 'heart-outline',
+    iconType: 'ionicons',
+    color: COLORS.circles.family || '#3b82f6',
+  },
+  {
+    id: 'work',
+    name: 'Work',
+    members: '24 members',
+    activeTime: 'Active 5m ago',
+    iconName: 'briefcase-outline',
+    iconType: 'ionicons',
+    color: COLORS.circles.work || '#f59e0b',
+  },
+  {
+    id: 'secret',
+    name: 'Secret',
+    members: '3 members',
+    activeTime: 'Active 3h ago',
+    iconName: 'lock-closed-outline',
+    iconType: 'ionicons',
+    color: COLORS.circles.secret || '#ec4899',
+  },
+];
+
+const getCircleMetadata = (circle) => {
+  const type = circle.type?.toLowerCase() || 'friends';
+  let iconName = 'happy-outline';
+  let color = COLORS.circles.friends || '#10b981';
+
+  switch (type) {
+    case 'friends':
+      iconName = 'happy-outline';
+      color = COLORS.circles.friends || '#10b981';
+      break;
+    case 'family':
+      iconName = 'heart-outline';
+      color = COLORS.circles.family || '#3b82f6';
+      break;
+    case 'work':
+      iconName = 'briefcase-outline';
+      color = COLORS.circles.work || '#f59e0b';
+      break;
+    case 'secret':
+      iconName = 'lock-closed-outline';
+      color = COLORS.circles.secret || '#ec4899';
+      break;
+    default:
+      iconName = 'people-outline';
+      color = '#a78bfa'; // custom
+  }
+
+  // Calculate some active time or format updated time
+  let activeTime = 'Active recently';
+  if (circle.updatedAt) {
+    const diff = new Date() - new Date(circle.updatedAt);
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    if (minutes < 1) {
+      activeTime = 'Active now';
+    } else if (minutes < 60) {
+      activeTime = `Active ${minutes}m ago`;
+    } else if (hours < 24) {
+      activeTime = `Active ${hours}h ago`;
+    } else {
+      activeTime = `Active ${Math.floor(hours / 24)}d ago`;
+    }
+  } else if (circle.activeTime) {
+    activeTime = circle.activeTime;
+  }
+
+  const memberText = circle.membersCount > 0 
+    ? `${circle.membersCount} member${circle.membersCount > 1 ? 's' : ''}` 
+    : (circle.members && circle.members.length > 0)
+      ? `${circle.members.length} member${circle.members.length > 1 ? 's' : ''}`
+      : '1 member';
+
+  return {
+    iconName,
+    color,
+    activeTime,
+    members: memberText,
+  };
+};
 
 export default function CirclesScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [circles, setCircles] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const myCircles = [
-    {
-      id: 'friends',
-      name: 'Friends',
-      members: '12 members',
-      activeTime: 'Active 2m ago',
-      iconName: 'happy-outline',
-      iconType: 'ionicons',
-      color: COLORS.circles.friends || '#10b981',
-    },
-    {
-      id: 'family',
-      name: 'Family',
-      members: '5 members',
-      activeTime: 'Active 1h ago',
-      iconName: 'heart-outline',
-      iconType: 'ionicons',
-      color: COLORS.circles.family || '#3b82f6',
-    },
-    {
-      id: 'work',
-      name: 'Work',
-      members: '24 members',
-      activeTime: 'Active 5m ago',
-      iconName: 'briefcase-outline',
-      iconType: 'ionicons',
-      color: COLORS.circles.work || '#f59e0b',
-    },
-    {
-      id: 'secret',
-      name: 'Secret',
-      members: '3 members',
-      activeTime: 'Active 3h ago',
-      iconName: 'lock-closed-outline',
-      iconType: 'ionicons',
-      color: COLORS.circles.secret || '#ec4899',
-    },
-  ];
+  const currentUser = useSelector((state) => state.auth.user);
+
+  useEffect(() => {
+    if (!currentUser?.uid) {
+      setCircles(FALLBACK_CIRCLES);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    const unsubscribe = listenToUserCircles(currentUser.uid, (data) => {
+      if (data && data.length > 0) {
+        setCircles(data);
+      } else {
+        setCircles(FALLBACK_CIRCLES);
+      }
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser?.uid]);
 
   const handleCirclePress = (circle) => {
     navigation.navigate(SCREENS.CIRCLE_DETAIL, { 
@@ -127,40 +214,47 @@ export default function CirclesScreen() {
         {/* My Circles Section */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>My Circles</Text>
-          <Text style={styles.sectionSubtitle}>You're active in 4 clusters today</Text>
+          <Text style={styles.sectionSubtitle}>You're active in {circles.length} cluster{circles.length === 1 ? '' : 's'} today</Text>
         </View>
 
         {/* 2x2 Grid */}
         <View style={styles.gridContainer}>
-          {myCircles.map((circle) => (
-            <TouchableOpacity 
-              key={circle.id}
-              activeOpacity={0.8}
-              onPress={() => handleCirclePress(circle)}
-              style={[
-                styles.gridCard, 
-                { 
-                  backgroundColor: `${circle.color}0a`, // 4% opacity of the theme color
-                  borderColor: `${circle.color}25`, // 14% opacity of theme color
-                },
-                SHADOWS.small
-              ]}
-            >
-              {/* Card Header with Status indicator */}
-              <View style={styles.cardHeaderRow}>
-                <View style={[styles.iconCircle, { backgroundColor: `${circle.color}15` }]}>
-                  <Ionicons name={circle.iconName} size={24} color={circle.color} />
-                </View>
-                <Text style={[styles.activeTimeText, { color: `${circle.color}d0` }]}>
-                  {circle.activeTime}
-                </Text>
-              </View>
+          {isLoading ? (
+            <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 40, alignSelf: 'center', width: '100%' }} />
+          ) : (
+            circles.map((circle) => {
+              const meta = getCircleMetadata(circle);
+              return (
+                <TouchableOpacity 
+                  key={circle.id}
+                  activeOpacity={0.8}
+                  onPress={() => handleCirclePress({ ...circle, color: meta.color })}
+                  style={[
+                    styles.gridCard, 
+                    { 
+                      backgroundColor: COLORS.card || '#2d1054', // Solid card background to fix Android shadow border outline
+                      borderColor: meta.color, // Clear colored category border
+                    },
+                    SHADOWS.small
+                  ]}
+                >
+                  {/* Card Header with Status indicator */}
+                  <View style={styles.cardHeaderRow}>
+                    <View style={[styles.iconCircle, { backgroundColor: `${meta.color}15` }]}>
+                      <Ionicons name={meta.iconName} size={24} color={meta.color} />
+                    </View>
+                    <Text style={[styles.activeTimeText, { color: `${meta.color}d0` }]}>
+                      {meta.activeTime}
+                    </Text>
+                  </View>
 
-              {/* Card Body */}
-              <Text style={styles.circleCardName}>{circle.name}</Text>
-              <Text style={styles.circleCardMembers}>{circle.members}</Text>
-            </TouchableOpacity>
-          ))}
+                  {/* Card Body */}
+                  <Text style={styles.circleCardName}>{circle.name}</Text>
+                  <Text style={styles.circleCardMembers}>{meta.members}</Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
         </View>
 
         {/* Create Circle Button (Dashed border full-width card) */}

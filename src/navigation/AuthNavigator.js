@@ -11,7 +11,6 @@ import { SCREENS } from '../constants';
 import SplashScreen from '../screens/auth/SplashScreen';
 import OnboardingScreen from '../screens/auth/OnboardingScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
-import OTPScreen from '../screens/auth/OTPScreen';
 import ProfileSetupScreen from '../screens/auth/ProfileSetupScreen';
 
 const Stack = createStackNavigator();
@@ -23,16 +22,6 @@ const Stack = createStackNavigator();
  */
 export function navigateToLogin(navigation) {
   navigation.navigate(SCREENS.LOGIN);
-}
-
-/**
- * Transition Helper: Navigates to the OTP Verification screen with params.
- * 
- * @param {object} navigation - React Navigation controller
- * @param {string} phone - User-inputted phone number
- */
-export function navigateToOTP(navigation, phone) {
-  navigation.navigate(SCREENS.OTP, { phoneNumber: phone });
 }
 
 export default function AuthNavigator() {
@@ -62,13 +51,6 @@ export default function AuthNavigator() {
       <Stack.Screen 
         name={SCREENS.LOGIN} 
         component={LoginScreen} 
-        options={{
-          cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
-        }}
-      />
-      <Stack.Screen 
-        name={SCREENS.OTP} 
-        component={OTPScreen} 
         options={{
           cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
         }}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -8,13 +8,17 @@ import {
   Image,
   ScrollView,
   StatusBar,
+  ActivityIndicator,
+  Alert
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SIZES, SHADOWS } from '../../constants/theme';
+import { listenToNotifications, markAllNotificationsRead } from '../../services/notificationService';
 
-const INITIAL_NOTIFICATIONS = [
+const FALLBACK_NOTIFICATIONS = [
   {
     id: '1',
     type: 'like',
@@ -27,6 +31,7 @@ const INITIAL_NOTIFICATIONS = [
     previewImage: require('../../../assets/concert_image.png'),
     badgeIcon: 'heart',
     badgeColor: '#ec4899',
+    read: false,
   },
   {
     id: '2',
@@ -40,6 +45,7 @@ const INITIAL_NOTIFICATIONS = [
     previewImage: require('../../../assets/post_workstation.png'),
     badgeIcon: 'at',
     badgeColor: '#3b82f6',
+    read: false,
   },
   {
     id: '3',
@@ -56,6 +62,7 @@ const INITIAL_NOTIFICATIONS = [
     ],
     badgeIcon: 'people',
     badgeColor: '#4f6ef7',
+    read: false,
   },
   {
     id: '4',
@@ -69,6 +76,7 @@ const INITIAL_NOTIFICATIONS = [
     previewImage: require('../../../assets/media__1779351253518.png'),
     badgeIcon: 'happy',
     badgeColor: '#8b5cf6',
+    read: false,
   },
   {
     id: '5',
@@ -82,17 +90,96 @@ const INITIAL_NOTIFICATIONS = [
     isFollowing: false,
     badgeIcon: 'person-add',
     badgeColor: '#10b981',
+    read: false,
   },
 ];
 
 const FILTERS = ['All', 'Reactions', 'Mentions', 'Circles'];
 
+const mapApiNotification = (notif) => {
+  let badgeIcon = 'notifications-outline';
+  let badgeColor = '#8b5cf6';
+  
+  const type = notif.type?.toLowerCase();
+  if (type === 'like') {
+    badgeIcon = 'heart';
+    badgeColor = '#ec4899';
+  } else if (type === 'mention') {
+    badgeIcon = 'at';
+    badgeColor = '#3b82f6';
+  } else if (type === 'circle_join') {
+    badgeIcon = 'people';
+    badgeColor = '#4f6ef7';
+  } else if (type === 'reaction') {
+    badgeIcon = 'happy';
+    badgeColor = '#8b5cf6';
+  } else if (type === 'follow') {
+    badgeIcon = 'person-add';
+    badgeColor = '#10b981';
+  }
+
+  let formattedTime = 'Recently';
+  if (notif.createdAt) {
+    const diff = new Date() - new Date(notif.createdAt);
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    if (minutes < 1) {
+      formattedTime = 'JUST NOW';
+    } else if (minutes < 60) {
+      formattedTime = `${minutes} MINS AGO`;
+    } else if (hours < 24) {
+      formattedTime = `${hours} HOUR${hours > 1 ? 'S' : ''} AGO`;
+    } else {
+      formattedTime = `${Math.floor(hours / 24)} DAY${Math.floor(hours / 24) > 1 ? 'S' : ''} AGO`;
+    }
+  }
+
+  return {
+    id: notif.id || notif._id,
+    type: notif.type,
+    user: {
+      name: notif.senderName || 'Someone',
+      avatar: notif.senderAvatar ? { uri: notif.senderAvatar } : null,
+    },
+    text: notif.text,
+    time: formattedTime,
+    previewImage: notif.postImage ? { uri: notif.postImage } : null,
+    badgeIcon,
+    badgeColor,
+    read: notif.read,
+    isFollowing: notif.isFollowing || false,
+    membersJoined: notif.membersJoined || null,
+  };
+};
+
 export default function NotificationsScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const currentUser = useSelector((state) => state.auth.user);
   
   const [activeFilter, setActiveFilter] = useState('All');
-  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!currentUser?.uid) {
+      setNotifications(FALLBACK_NOTIFICATIONS);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    const unsubscribe = listenToNotifications(currentUser.uid, (data) => {
+      if (data && data.length > 0) {
+        setNotifications(data.map(mapApiNotification));
+      } else {
+        setNotifications(FALLBACK_NOTIFICATIONS);
+      }
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser?.uid]);
 
   const handleFollowToggle = (id) => {
     setNotifications((prev) =>
@@ -102,9 +189,39 @@ export default function NotificationsScreen() {
     );
   };
 
-  const handleMarkAsRead = () => {
-    alert('All notifications marked as read.');
+  const handleMarkAsRead = async () => {
+    if (!currentUser?.uid) {
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      Alert.alert('Success', 'All fallback notifications marked as read.');
+      return;
+    }
+    try {
+      const res = await markAllNotificationsRead(currentUser.uid);
+      if (res.success) {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        Alert.alert('Success', 'All notifications marked as read.');
+      } else {
+        Alert.alert('Error', res.error || 'Failed to mark notifications as read.');
+      }
+    } catch (err) {
+      Alert.alert('Error', err.message);
+    }
   };
+
+  const filteredNotifications = notifications.filter(notif => {
+    if (activeFilter === 'All') return true;
+    const type = notif.type?.toLowerCase();
+    if (activeFilter === 'Reactions') {
+      return type === 'like' || type === 'reaction';
+    }
+    if (activeFilter === 'Mentions') {
+      return type === 'mention';
+    }
+    if (activeFilter === 'Circles') {
+      return type === 'circle_join';
+    }
+    return true;
+  });
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>
@@ -112,7 +229,12 @@ export default function NotificationsScreen() {
         <Ionicons name="menu" size={28} color="#ffffff" />
       </TouchableOpacity>
       <Text style={styles.headerTitle}>VibeSpace</Text>
-      <TouchableOpacity style={styles.headerButton} onPress={() => alert('Notifications refresh')}>
+      <TouchableOpacity style={styles.headerButton} onPress={() => {
+        if (currentUser?.uid) {
+          setIsLoading(true);
+          // Auto trigger fresh poll since interval will do it too
+        }
+      }}>
         <Ionicons name="notifications-outline" size={24} color="#ffffff" />
       </TouchableOpacity>
     </View>
@@ -146,7 +268,7 @@ export default function NotificationsScreen() {
 
   const renderNotificationItem = ({ item }) => {
     return (
-      <View style={styles.notificationCard}>
+      <View style={[styles.notificationCard, !item.read && { borderColor: 'rgba(79, 110, 247, 0.4)' }]}>
         {/* Left: Avatar with floating badge */}
         <View style={styles.avatarWrapper}>
           {item.user.avatar ? (
@@ -191,7 +313,7 @@ export default function NotificationsScreen() {
               {item.membersJoined.map((joinedAvatar, index) => (
                 <Image
                   key={index}
-                  source={joinedAvatar}
+                  source={typeof joinedAvatar === 'string' ? { uri: joinedAvatar } : joinedAvatar}
                   style={[
                     styles.miniAvatar,
                     { marginLeft: index > 0 ? -12 : 0, zIndex: 10 - index },
@@ -237,13 +359,19 @@ export default function NotificationsScreen() {
       {renderFilterTabs()}
 
       {/* Notification List */}
-      <FlatList
-        data={notifications}
-        renderItem={renderNotificationItem}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
-      />
+      {isLoading && notifications.length === 0 ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={filteredNotifications}
+          renderItem={renderNotificationItem}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.listContent}
+        />
+      )}
     </View>
   );
 }

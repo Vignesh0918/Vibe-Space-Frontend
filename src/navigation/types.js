@@ -17,10 +17,6 @@ import PropTypes from 'prop-types';
  * @property {undefined} OnboardingScreen - Initial sliders explaining app features.
  * @property {undefined} LoginScreen - Input phone number to request SMS verification.
  * 
- * @property {Object} OTPScreen - Input SMS verification code.
- * @property {string} OTPScreen.phoneNumber - The phone number OTP was sent to.
- * @property {Object} [OTPScreen.confirmation] - Firebase confirmation object.
- * 
  * @property {undefined} ProfileSetupScreen - Initial profile creation (display name, username, bio, mood).
  * 
  * @property {undefined} HomeScreen - Home Feed tab listing posts.
@@ -72,13 +68,6 @@ export const NavigationPropTypes = {
     canGoBack: PropTypes.func.isRequired,
   }).isRequired,
 };
-
-export const OTPScreenRouteProp = PropTypes.shape({
-  params: PropTypes.shape({
-    phoneNumber: PropTypes.string.isRequired,
-    confirmation: PropTypes.object,
-  }).isRequired,
-}).isRequired;
 
 export const CircleDetailScreenRouteProp = PropTypes.shape({
   params: PropTypes.shape({

@@ -271,3 +271,165 @@ export async function getUnreadCount(userId) {
     return { success: false, error: error.response?.data?.error || error.message };
   }
 }
+
+/**
+ * Gets details of a single chat room.
+ * @param {string} chatId - Target chat ID.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function getChatDetails(chatId) {
+  try {
+    const response = await apiClient.get(`/chats/${chatId}`);
+    if (response.data.success && response.data.data) {
+      response.data.data = mapChatIds(response.data.data);
+    }
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Updates a group chat name and/or avatar.
+ * Handles local file upload for the avatar if needed.
+ * @param {string} chatId - Target chat ID.
+ * @param {string} name - Group name.
+ * @param {string} groupAvatar - Local URI or web URL of the avatar image.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function updateGroupChat(chatId, name, groupAvatar = '') {
+  try {
+    let finalAvatarUrl = groupAvatar;
+    if (finalAvatarUrl && (finalAvatarUrl.startsWith('file://') || finalAvatarUrl.startsWith('content://'))) {
+      const uploadRes = await uploadFile(finalAvatarUrl, `chats/${chatId}/avatar`);
+      if (uploadRes.success) {
+        finalAvatarUrl = uploadRes.data;
+      } else {
+        return { success: false, error: `Failed to upload avatar: ${uploadRes.error}` };
+      }
+    }
+    const response = await apiClient.put(`/chats/${chatId}`, { name, groupAvatar: finalAvatarUrl });
+    if (response.data.success && response.data.data) {
+      response.data.data = mapChatIds(response.data.data);
+    }
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Leaves or deletes a chat room.
+ * @param {string} chatId - Target chat ID.
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+export async function leaveOrDeleteChat(chatId) {
+  try {
+    const response = await apiClient.delete(`/chats/${chatId}`);
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Adds a user to a group chat room.
+ * @param {string} chatId - Target chat ID.
+ * @param {string} userId - User ID to add.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function addMemberToGroupChat(chatId, userId) {
+  try {
+    const response = await apiClient.post(`/chats/${chatId}/members`, { userId });
+    if (response.data.success && response.data.data) {
+      response.data.data = mapChatIds(response.data.data);
+    }
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Removes a user from a group chat room.
+ * @param {string} chatId - Target chat ID.
+ * @param {string} userId - User ID to remove.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function removeMemberFromGroupChat(chatId, userId) {
+  try {
+    const response = await apiClient.delete(`/chats/${chatId}/members/${userId}`);
+    if (response.data.success && response.data.data) {
+      response.data.data = mapChatIds(response.data.data);
+    }
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Edits a message text.
+ * Only possible within 15 minutes of creation (checked on backend).
+ * @param {string} chatId - Chat room ID.
+ * @param {string} messageId - Message ID.
+ * @param {string} text - New message text.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function editMessage(chatId, messageId, text) {
+  try {
+    const response = await apiClient.put(`/chats/${chatId}/messages/${messageId}`, { text });
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Fetches all messages containing media attachments for a chat room.
+ * @param {string} chatId - Target chat ID.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function getChatMedia(chatId) {
+  try {
+    const response = await apiClient.get(`/chats/${chatId}/media`);
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Pins a message in a chat room.
+ * @param {string} chatId - Target chat ID.
+ * @param {string} messageId - Message ID to pin.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function pinMessage(chatId, messageId) {
+  try {
+    const response = await apiClient.post(`/chats/${chatId}/pin/${messageId}`);
+    if (response.data.success && response.data.data) {
+      response.data.data = mapChatIds(response.data.data);
+    }
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Toggles a user's emoji reaction on a message.
+ * @param {string} chatId - Chat room ID.
+ * @param {string} messageId - Message ID.
+ * @param {string} emoji - Reaction emoji.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function reactToMessage(chatId, messageId, emoji) {
+  try {
+    const response = await apiClient.post(`/chats/${chatId}/messages/${messageId}/react`, { emoji });
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+

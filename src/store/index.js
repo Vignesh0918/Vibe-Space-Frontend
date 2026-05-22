@@ -22,14 +22,18 @@ import userReducer from './slices/userSlice';
 import postReducer from './slices/postSlice';
 import chatReducer from './slices/chatSlice';
 import circleReducer from './slices/circleSlice';
+import vibeReducer from './slices/vibeSlice';
+import searchReducer from './slices/searchSlice';
 
-// Combine all 5 features reducers
+// Combine all feature reducers
 const rootReducer = combineReducers({
   auth: authReducer,
   user: userReducer,
   post: postReducer,
   chat: chatReducer,
   circle: circleReducer,
+  vibe: vibeReducer,
+  search: searchReducer,
 });
 
 // Configure redux-persist

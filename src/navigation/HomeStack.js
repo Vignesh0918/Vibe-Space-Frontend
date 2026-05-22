@@ -31,6 +31,11 @@ import EditProfileScreen from '../screens/settings/EditProfileScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 import ChatExpiryScreen from '../screens/settings/ChatExpiryScreen';
 
+import BookmarksScreen from '../screens/main/BookmarksScreen';
+import UserProfileScreen from '../screens/main/UserProfileScreen';
+import FollowersScreen from '../screens/main/FollowersScreen';
+import FollowingScreen from '../screens/main/FollowingScreen';
+
 const Stack = createStackNavigator();
 
 const defaultScreenOptions = {
@@ -52,6 +57,10 @@ export function HomeStack() {
       <Stack.Screen name={SCREENS.SEARCH} component={SearchScreen} />
       <Stack.Screen name={SCREENS.NEARBY_VIBES} component={NearbyVibesScreen} />
       <Stack.Screen name={SCREENS.POST_DETAIL} component={PostDetailScreen} />
+      <Stack.Screen name={SCREENS.BOOKMARKS} component={BookmarksScreen} />
+      <Stack.Screen name={SCREENS.USER_PROFILE} component={UserProfileScreen} />
+      <Stack.Screen name={SCREENS.FOLLOWERS} component={FollowersScreen} />
+      <Stack.Screen name={SCREENS.FOLLOWING} component={FollowingScreen} />
     </Stack.Navigator>
   );
 }
@@ -92,6 +101,10 @@ export function ProfileStack() {
       <Stack.Screen name={SCREENS.EDIT_PROFILE} component={EditProfileScreen} />
       <Stack.Screen name={SCREENS.SETTINGS} component={SettingsScreen} />
       <Stack.Screen name={SCREENS.CHAT_EXPIRY} component={ChatExpiryScreen} />
+      <Stack.Screen name={SCREENS.BOOKMARKS} component={BookmarksScreen} />
+      <Stack.Screen name={SCREENS.USER_PROFILE} component={UserProfileScreen} />
+      <Stack.Screen name={SCREENS.FOLLOWERS} component={FollowersScreen} />
+      <Stack.Screen name={SCREENS.FOLLOWING} component={FollowingScreen} />
     </Stack.Navigator>
   );
 }

@@ -108,3 +108,66 @@ export async function deleteExpiredStories() {
     return { success: false, error: error.response?.data?.error || error.message };
   }
 }
+
+/**
+ * Gets all active stories by a specific user.
+ * @param {string} userId - Target user ID.
+ * @returns {Promise<{success: boolean, data?: array, error?: string}>}
+ */
+export async function getUserStories(userId) {
+  try {
+    const response = await apiClient.get(`/stories/user/${userId}`);
+    if (response.data.success && response.data.data) {
+      response.data.data = response.data.data.map(story => ({
+        ...story,
+        id: story._id || story.id
+      }));
+    }
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Gets single story by ID.
+ * @param {string} storyId - Story ID.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function getStoryById(storyId) {
+  try {
+    const response = await apiClient.get(`/stories/${storyId}`);
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Deletes user's own story and its Cloudinary media.
+ * @param {string} storyId - Story ID to delete.
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export async function deleteStory(storyId) {
+  try {
+    const response = await apiClient.delete(`/stories/${storyId}`);
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Gets viewers list for a story (owner only).
+ * @param {string} storyId - Story ID.
+ * @returns {Promise<{success: boolean, data?: array, totalViews?: number, error?: string}>}
+ */
+export async function getStoryViewers(storyId) {
+  try {
+    const response = await apiClient.get(`/stories/${storyId}/viewers`);
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+

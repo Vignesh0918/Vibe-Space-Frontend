@@ -27,8 +27,14 @@ import {
   Dimensions,
   StatusBar,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
+import { useSelector } from 'react-redux';
+import * as ImagePicker from 'expo-image-picker';
+import { createPost } from '../../services/postService';
+import { getUserCircles, createDefaultCircles } from '../../services/circleService';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -59,9 +65,22 @@ const PRESET_TAGS = [
   { id: '6', label: 'Gaming' },
 ];
 
+const PRESET_IMAGE_URLS = [
+  'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800', // post_swirl.png
+  'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800', // post_workstation.png
+  'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=800', // media__1779348639761.png
+  'https://images.unsplash.com/photo-1533158326339-7f3cf2404354?w=800', // media__1779348907328.png
+  'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=800', // media__1779349699782.png
+  'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=800', // media__1779349908803.png
+  'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=800', // media__1779350518027.png
+  'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800', // media__1779350622091.png
+];
+
 export default function AddPostScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+
+  const currentUser = useSelector((state) => state.auth.user);
 
   // State Management
   const [selectedImage, setSelectedImage] = useState(GALLERY_IMAGES[0]);
@@ -71,6 +90,7 @@ export default function AddPostScreen() {
   const [isFlashOn, setIsFlashOn] = useState(false);
   const [isTimerActive, setIsTimerActive] = useState(false);
   const [cameraFacingFront, setCameraFacingFront] = useState(false);
+  const [isPosting, setIsPosting] = useState(false);
 
   const circles = [
     { id: 'friends', label: 'Friends', icon: 'people-outline', color: COLORS.circles.friends || '#10b981' },
@@ -87,9 +107,146 @@ export default function AddPostScreen() {
     setVibeText(prev => prev ? `${prev} ${tagLabel}` : tagLabel);
   };
 
-  const handlePost = () => {
-    alert(`Post shared to your ${selectedCircle.toUpperCase()} circle!`);
-    navigation.navigate(SCREENS.HOME);
+  const handleCameraThumbnailPress = () => {
+    Alert.alert(
+      'Select Image Source',
+      'Choose how you want to add a photo to your post:',
+      [
+        {
+          text: '📷 Take Photo',
+          onPress: () => launchImagePicker(true),
+        },
+        {
+          text: '🖼️ Choose from Gallery',
+          onPress: () => launchImagePicker(false),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ]
+    );
+  };
+
+  const launchImagePicker = async (useCamera) => {
+    try {
+      const cameraPerm = await ImagePicker.requestCameraPermissionsAsync();
+      const libraryPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (useCamera && cameraPerm.status !== 'granted') {
+        Alert.alert('Permission Denied', 'Camera permission is required!');
+        return;
+      }
+      if (!useCamera && libraryPerm.status !== 'granted') {
+        Alert.alert('Permission Denied', 'Gallery permission is required!');
+        return;
+      }
+
+      const pickerOptions = {
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      };
+
+      let result;
+      if (useCamera) {
+        result = await ImagePicker.launchCameraAsync(pickerOptions);
+      } else {
+        result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
+      }
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const localUri = result.assets[0].uri;
+        setSelectedImage({ uri: localUri });
+      }
+    } catch (error) {
+      console.error('Error picking image for post:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const handlePost = async () => {
+    if (isPosting) return;
+
+    setIsPosting(true);
+    try {
+      const userId = currentUser?.uid || 'vibe_user_dev';
+      const userName = currentUser?.displayName || 'Aarav';
+      const userAvatar = currentUser?.photoURL || '';
+
+      // 1. Resolve circle ID from MongoDB
+      let resolvedCircleId = null;
+      try {
+        const circlesRes = await getUserCircles(userId);
+        if (circlesRes.success && circlesRes.data && circlesRes.data.length > 0) {
+          const matchedCircle = circlesRes.data.find(
+            c => c.type?.toLowerCase() === selectedCircle.toLowerCase()
+          );
+          if (matchedCircle) {
+            resolvedCircleId = matchedCircle._id || matchedCircle.id;
+          }
+        }
+
+        // If circle wasn't found (e.g. first user), create default circles
+        if (!resolvedCircleId) {
+          const initRes = await createDefaultCircles(userId);
+          if (initRes.success && initRes.data && initRes.data.length > 0) {
+            const matchedCircle = initRes.data.find(
+              c => c.type?.toLowerCase() === selectedCircle.toLowerCase()
+            );
+            if (matchedCircle) {
+              resolvedCircleId = matchedCircle._id || matchedCircle.id;
+            } else {
+              resolvedCircleId = initRes.data[0]._id || initRes.data[0].id;
+            }
+          }
+        }
+      } catch (circleError) {
+        console.warn('Error resolving circle in post creation:', circleError);
+      }
+
+      if (!resolvedCircleId) {
+        Alert.alert('Error', 'Could not resolve the selected circle. Please try again.');
+        setIsPosting(false);
+        return;
+      }
+
+      // 2. Resolve imageURL
+      let imageURL = '';
+      if (typeof selectedImage === 'number') {
+        const imageIndex = GALLERY_IMAGES.indexOf(selectedImage);
+        if (imageIndex !== -1 && imageIndex < PRESET_IMAGE_URLS.length) {
+          imageURL = PRESET_IMAGE_URLS[imageIndex];
+        } else {
+          imageURL = PRESET_IMAGE_URLS[0];
+        }
+      } else if (selectedImage && selectedImage.uri) {
+        imageURL = selectedImage.uri;
+      }
+
+      // 3. Create post payload
+      const postPayload = {
+        caption: vibeText,
+        imageURL,
+        circleId: resolvedCircleId,
+        userName,
+        userAvatar,
+        userId
+      };
+
+      const response = await createPost(postPayload);
+      if (response.success) {
+        Alert.alert('Success', 'Post shared successfully!');
+        navigation.navigate(SCREENS.HOME);
+      } else {
+        Alert.alert('Error', response.error || 'Failed to share post');
+      }
+    } catch (error) {
+      console.error('Failed to create post:', error);
+      Alert.alert('Error', error.message || 'An unexpected error occurred');
+    } finally {
+      setIsPosting(false);
+    }
   };
 
   const handleAddSong = () => {
@@ -137,6 +294,7 @@ export default function AddPostScreen() {
               activeOpacity={0.8}
               onPress={handlePost}
               style={styles.postButtonTouch}
+              disabled={isPosting}
             >
               <LinearGradient
                 colors={['#8b5cf6', '#4f6ef7']}
@@ -144,7 +302,11 @@ export default function AddPostScreen() {
                 end={{ x: 1, y: 1 }}
                 style={styles.postButtonGradient}
               >
-                <Text style={styles.postButtonText}>Post</Text>
+                {isPosting ? (
+                  <ActivityIndicator size="small" color="#ffffff" style={{ paddingHorizontal: 10 }} />
+                ) : (
+                  <Text style={styles.postButtonText}>Post</Text>
+                )}
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -278,7 +440,7 @@ export default function AddPostScreen() {
               <TouchableOpacity 
                 activeOpacity={0.8}
                 style={styles.cameraThumbnail}
-                onPress={() => alert('Camera trigger clicked')}
+                onPress={handleCameraThumbnailPress}
               >
                 <Ionicons name="camera-outline" size={24} color={COLORS.primary} />
               </TouchableOpacity>

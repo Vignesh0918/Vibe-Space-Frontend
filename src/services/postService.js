@@ -232,3 +232,86 @@ export async function deletePost(postId) {
     return { success: false, error: error.response?.data?.error || error.message };
   }
 }
+
+/**
+ * Gets a single post by ID.
+ * @param {string} postId - Post ID.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function getPostDetails(postId) {
+  try {
+    const response = await apiClient.get(`/posts/${postId}`);
+    if (response.data.success && response.data.data) {
+      response.data.data = mapPostIds(response.data.data);
+    }
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Toggles bookmark status for a post.
+ * @param {string} postId - Target post ID.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function bookmarkPost(postId) {
+  try {
+    const response = await apiClient.post(`/posts/${postId}/bookmark`);
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Retrieves bookmarked posts for a user.
+ * @param {string} userId - User ID.
+ * @returns {Promise<{success: boolean, data?: array, error?: string}>}
+ */
+export async function getBookmarkedPosts(userId) {
+  try {
+    const response = await apiClient.get(`/posts/bookmarked/${userId}`);
+    if (response.data.success && response.data.data) {
+      response.data.data = response.data.data.map(mapPostIds);
+    }
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Retrieves trending posts (top reacted posts).
+ * @returns {Promise<{success: boolean, data?: array, error?: string}>}
+ */
+export async function getTrendingPosts() {
+  try {
+    const response = await apiClient.get('/posts/trending');
+    if (response.data.success && response.data.data) {
+      response.data.data = response.data.data.map(mapPostIds);
+    }
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Edits the caption of a post.
+ * @param {string} postId - Target post ID.
+ * @param {string} caption - New caption text.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function editPost(postId, caption) {
+  try {
+    const response = await apiClient.put(`/posts/${postId}`, { caption });
+    if (response.data.success && response.data.data) {
+      response.data.data = mapPostIds(response.data.data);
+    }
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+

@@ -10,7 +10,7 @@
  * - "Nearby Vibes" section with a custom grid map graphic, active count overlays, overlapping radar circles, overlapping member badges, and an "EXPLORE" gradient pill trigger.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -20,50 +20,139 @@ import {
   Image, 
   TextInput,
   Dimensions,
-  StatusBar
+  StatusBar,
+  ActivityIndicator,
+  Alert
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useDispatch, useSelector } from 'react-redux';
+
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
 import { SCREENS } from '../../constants';
 import SideDrawer from '../../components/common/SideDrawer';
+import PostCard from '../../components/feed/PostCard';
+import { performSearch, clearSearch } from '../../store/slices/searchSlice';
+import * as authService from '../../services/authService';
+import * as postService from '../../services/postService';
+import * as circleService from '../../services/circleService';
+import * as nearbyVibeService from '../../services/nearbyVibeService';
+import { getCurrentLocation } from '../../services/locationService';
 
 const { width } = Dimensions.get('window');
 const TRENDING_CARD_WIDTH = width * 0.65;
 
-const PEOPLE_DATA = [
-  { id: '1', name: 'Aria V.', avatar: require('../../../assets/aria_avatar.png') },
-  { id: '2', name: 'Leo K.', avatar: require('../../../assets/ishaan_avatar.png') },
-  { id: '3', name: 'Maya S.', avatar: require('../../../assets/priya_avatar.png') },
-  { id: '4', name: 'Zay', avatar: require('../../../assets/aarav_avatar.png') },
-];
-
-const TRENDING_DATA = [
-  {
-    id: 't1',
-    title: 'Late Night Echoes',
-    tags: ['#Music', '#Lofi'],
-    metric: '12.4k listening',
-    metricIcon: 'stats-chart',
-    image: require('../../../assets/concert_image.png'),
-  },
-  {
-    id: 't2',
-    title: 'Cyber Dreams',
-    tags: ['#Visuals', '#Aesthetic'],
-    metric: '8.2k views',
-    metricIcon: 'eye',
-    image: require('../../../assets/post_workstation.png'),
-  },
-];
-
 export default function SearchScreen() {
+  const dispatch = useDispatch();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+
+  const currentUser = useSelector((state) => state.auth.user);
+  const searchResults = useSelector((state) => state.search.results) || { users: [], circles: [], posts: [], vibes: [] };
+  const isSearchLoading = useSelector((state) => state.search.isLoading);
+  const searchError = useSelector((state) => state.search.error);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'users', 'circles', 'posts', 'vibes'
+
+  // Dashboard state
+  const [recommendedUsers, setRecommendedUsers] = useState([]);
+  const [trendingPosts, setTrendingPosts] = useState([]);
+  const [nearbyCount, setNearbyCount] = useState(42); // fallback
+  const [followingIds, setFollowingIds] = useState([]);
+  const [joinedCircleIds, setJoinedCircleIds] = useState([]);
+
+  // Fetch dashboard initial stats & lists
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        const recRes = await authService.getRecommendedUsers();
+        if (recRes.success) {
+          setRecommendedUsers(recRes.data || []);
+        }
+
+        const trendRes = await postService.getTrendingPosts();
+        if (trendRes.success) {
+          setTrendingPosts(trendRes.data || []);
+        }
+
+        const locRes = await getCurrentLocation();
+        if (locRes.success && locRes.data) {
+          const { latitude, longitude } = locRes.data;
+          const nearbyRes = await nearbyVibeService.getNearbyVibes(latitude, longitude);
+          if (nearbyRes.success && nearbyRes.data) {
+            setNearbyCount(nearbyRes.data.length);
+          }
+        }
+      } catch (err) {
+        console.warn('Error loading search initial metrics:', err);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  // Fetch follow list and circle memberships to reflect action buttons state
+  useEffect(() => {
+    if (currentUser?.uid) {
+      authService.getUserProfile(currentUser.uid).then(res => {
+        if (res.success && res.data) {
+          setFollowingIds(res.data.following || []);
+        }
+      });
+
+      circleService.getUserCircles(currentUser.uid).then(res => {
+        if (res.success && res.data) {
+          setJoinedCircleIds(res.data.map(c => c._id || c.id) || []);
+        }
+      });
+    }
+  }, [currentUser]);
+
+  // Debounced API Search call
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      dispatch(clearSearch());
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      dispatch(performSearch({ query: q, type: activeTab, page: 1, limit: 15 }));
+    }, 450);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery, activeTab]);
+
+  const handleFollowToggle = async (targetUserId) => {
+    const isFollowing = followingIds.includes(targetUserId);
+    if (isFollowing) {
+      setFollowingIds(prev => prev.filter(id => id !== targetUserId));
+      await authService.unfollowUser(targetUserId);
+    } else {
+      setFollowingIds(prev => [...prev, targetUserId]);
+      await authService.followUser(targetUserId);
+    }
+    // Sync backend fully
+    if (currentUser?.uid) {
+      const res = await authService.getUserProfile(currentUser.uid);
+      if (res.success && res.data) {
+        setFollowingIds(res.data.following || []);
+      }
+    }
+  };
+
+  const handleJoinCircle = async (circleId) => {
+    setJoinedCircleIds(prev => [...prev, circleId]);
+    const res = await circleService.addMemberToCircle(circleId, currentUser.uid);
+    if (!res.success) {
+      setJoinedCircleIds(prev => prev.filter(id => id !== circleId));
+      Alert.alert('Error', res.error || 'Failed to join circle.');
+    }
+  };
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>
@@ -88,6 +177,370 @@ export default function SearchScreen() {
     </View>
   );
 
+  const renderCategoryTabs = () => (
+    <View style={styles.tabsContainer}>
+      {['all', 'users', 'circles', 'posts', 'vibes'].map((tab) => (
+        <TouchableOpacity
+          key={tab}
+          style={[styles.tabButton, activeTab === tab && styles.activeTabButton]}
+          onPress={() => setActiveTab(tab)}
+        >
+          <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+            {tab.toUpperCase()}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
+  const renderSearchResults = () => {
+    if (isSearchLoading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#a78bfa" />
+          <Text style={styles.loadingText}>Searching the universe...</Text>
+        </View>
+      );
+    }
+
+    const { users = [], circles = [], posts = [], vibes = [] } = searchResults;
+    const hasUsers = users.length > 0;
+    const hasCircles = circles.length > 0;
+    const hasPosts = posts.length > 0;
+    const hasVibes = vibes.length > 0;
+
+    const noResults = !hasUsers && !hasCircles && !hasPosts && !hasVibes;
+
+    if (noResults) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="search-outline" size={64} color="rgba(255,255,255,0.15)" />
+          <Text style={styles.emptyText}>No matches found for "{searchQuery}"</Text>
+          <Text style={styles.emptySubtitle}>Try adjusting your spelling or keywords</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.resultsWrapper}>
+        {/* USERS RESULTS */}
+        {(activeTab === 'all' || activeTab === 'users') && hasUsers && (
+          <View style={styles.resultsSection}>
+            <Text style={styles.resultsSectionTitle}>People</Text>
+            {users.map((user) => {
+              const isFollowing = followingIds.includes(user.id);
+              return (
+                <View key={user.id} style={styles.userResultRow}>
+                  <TouchableOpacity 
+                    style={styles.userInfoBtn}
+                    onPress={() => navigation.navigate(SCREENS.USER_PROFILE, { userId: user.id })}
+                  >
+                    <Image 
+                      source={user.photoURL ? { uri: user.photoURL } : require('../../../assets/aarav_avatar.png')} 
+                      style={styles.resultAvatar} 
+                    />
+                    <View style={styles.resultInfoCol}>
+                      <Text style={styles.resultNameText}>{user.displayName}</Text>
+                      <Text style={styles.resultHandleText}>{user.username}</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {user.id !== currentUser?.uid && (
+                    <TouchableOpacity 
+                      style={[styles.followBtn, isFollowing && styles.followingBtnActive]}
+                      onPress={() => handleFollowToggle(user.id)}
+                    >
+                      <Text style={[styles.followBtnText, isFollowing && styles.followingBtnTextActive]}>
+                        {isFollowing ? 'Following' : 'Follow'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* CIRCLES RESULTS */}
+        {(activeTab === 'all' || activeTab === 'circles') && hasCircles && (
+          <View style={styles.resultsSection}>
+            <Text style={styles.resultsSectionTitle}>Circles</Text>
+            {circles.map((circle) => {
+              const isMember = joinedCircleIds.includes(circle.id);
+              return (
+                <View key={circle.id} style={styles.userResultRow}>
+                  <TouchableOpacity 
+                    style={styles.userInfoBtn}
+                    onPress={() => navigation.navigate(SCREENS.CIRCLE_DETAIL, { circleId: circle.id, circleName: circle.name })}
+                  >
+                    <Image 
+                      source={circle.avatar ? { uri: circle.avatar } : require('../../../assets/cosmic_wave.png')} 
+                      style={styles.circleResultAvatar} 
+                    />
+                    <View style={styles.resultInfoCol}>
+                      <Text style={styles.resultNameText}>{circle.name}</Text>
+                      <Text style={styles.resultHandleText}>{circle.membersCount || circle.members?.length || 1} members • {circle.type}</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={[styles.followBtn, isMember && styles.followingBtnActive]}
+                    onPress={() => !isMember && handleJoinCircle(circle.id)}
+                    disabled={isMember}
+                  >
+                    <Text style={[styles.followBtnText, isMember && styles.followingBtnTextActive]}>
+                      {isMember ? 'Joined' : 'Join'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* VIBES RESULTS */}
+        {(activeTab === 'all' || activeTab === 'vibes') && hasVibes && (
+          <View style={styles.resultsSection}>
+            <Text style={styles.resultsSectionTitle}>Vibes Feed</Text>
+            {vibes.map((vibe) => (
+              <View key={vibe.id} style={styles.vibeCardItem}>
+                <View style={styles.vibeHeaderRow}>
+                  <Image 
+                    source={vibe.userAvatar ? { uri: vibe.userAvatar } : require('../../../assets/aarav_avatar.png')} 
+                    style={styles.vibeUserAvatar} 
+                  />
+                  <View style={styles.vibeInfoCol}>
+                    <Text style={styles.vibeName}>{vibe.userName}</Text>
+                    <Text style={styles.vibeMoodText}>Feeling {vibe.mood}</Text>
+                  </View>
+                </View>
+                <Text style={styles.vibeBodyText}>{vibe.text}</Text>
+                {vibe.songTitle && (
+                  <View style={styles.songRow}>
+                    <Ionicons name="musical-notes" size={14} color="#a78bfa" style={{ marginRight: 6 }} />
+                    <Text style={styles.songText}>{vibe.songTitle} - {vibe.songArtist}</Text>
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* POSTS RESULTS */}
+        {(activeTab === 'all' || activeTab === 'posts') && hasPosts && (
+          <View style={styles.resultsSection}>
+            <Text style={styles.resultsSectionTitle}>Posts</Text>
+            {posts.map((post) => (
+              <PostCard 
+                key={post.id} 
+                post={post}
+                onReact={(emoji) => postService.toggleReaction(post.id, emoji, currentUser?.uid, currentUser?.displayName, currentUser?.photoURL)}
+                onBookmark={() => postService.bookmarkPost(post.id)}
+              />
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const renderDashboard = () => (
+    <ScrollView 
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.scrollContainer}
+    >
+      {/* People You May Know */}
+      <View style={styles.sectionContainer}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>People You May Know</Text>
+          <TouchableOpacity onPress={() => setActiveTab('users')}>
+            <Text style={styles.viewAllText}>VIEW ALL</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.horizontalScroll}
+        >
+          {recommendedUsers.length > 0 ? (
+            recommendedUsers.map((item) => (
+              <TouchableOpacity 
+                key={item.id || item._id} 
+                style={styles.personCard} 
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate(SCREENS.USER_PROFILE, { userId: item.id || item._id })}
+              >
+                <View style={styles.avatarWrapper}>
+                  <LinearGradient
+                    colors={['#8b5cf6', '#4f6ef7']}
+                    style={styles.avatarGradientBorder}
+                  >
+                    <View style={styles.avatarInnerContainer}>
+                      <Image 
+                        source={item.photoURL ? { uri: item.photoURL } : require('../../../assets/aarav_avatar.png')} 
+                        style={styles.personAvatar} 
+                      />
+                    </View>
+                  </LinearGradient>
+                  
+                  <TouchableOpacity 
+                    style={styles.plusIconBadge}
+                    onPress={() => handleFollowToggle(item.id || item._id)}
+                  >
+                    <Ionicons name="add" size={14} color="#ffffff" />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.personName} numberOfLines={1}>{item.displayName}</Text>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={styles.emptyHorizontal}>
+              <Text style={styles.emptyHorizontalText}>No recommendations today</Text>
+            </View>
+          )}
+        </ScrollView>
+      </View>
+
+      {/* Trending Vibes */}
+      <View style={styles.sectionContainer}>
+        <Text style={[styles.sectionTitle, { marginHorizontal: 16, marginBottom: 16 }]}>Trending Vibes</Text>
+        
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={TRENDING_CARD_WIDTH + 16}
+          decelerationRate="fast"
+          contentContainerStyle={[styles.horizontalScroll, { paddingLeft: 16 }]}
+        >
+          {trendingPosts.length > 0 ? (
+            trendingPosts.map((post) => {
+              // Extract tags
+              const tags = post.caption?.match(/#[a-zA-Z0-9_]+/g) || ['#Vibe'];
+              const totalReactions = Object.values(post.reactions || {}).reduce((acc, curr) => acc + curr.length, 0);
+
+              return (
+                <TouchableOpacity 
+                  key={post.id} 
+                  style={styles.trendingCardTouch} 
+                  activeOpacity={0.95}
+                  onPress={() => navigation.navigate(SCREENS.POST_DETAIL, { postId: post.id })}
+                >
+                  <Image 
+                    source={post.imageURL ? { uri: post.imageURL } : require('../../../assets/concert_image.png')} 
+                    style={styles.trendingImage} 
+                  />
+                  
+                  <LinearGradient
+                    colors={['rgba(26,5,51,0.1)', 'rgba(26,5,51,0.9)'] }
+                    style={styles.trendingGradient}
+                  >
+                    <View style={styles.trendingTagRow}>
+                      {tags.slice(0, 2).map((tag, idx) => (
+                        <View key={idx} style={styles.tagCapsule}>
+                          <Text style={styles.tagText}>{tag}</Text>
+                        </View>
+                      ))}
+                    </View>
+
+                    <View style={styles.trendingTextWrapper}>
+                      <Text style={styles.trendingCardTitle} numberOfLines={1}>
+                        {post.caption || 'Cosmic Session'}
+                      </Text>
+                      <View style={styles.metricRow}>
+                        <Ionicons name="flame" size={14} color="rgba(255,255,255,0.7)" style={{ marginRight: 6 }} />
+                        <Text style={styles.metricText}>{totalReactions} reactions</Text>
+                      </View>
+                    </View>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )
+            })
+          ) : (
+            <View style={styles.trendingCardTouch}>
+              <LinearGradient
+                colors={['#1a0533', '#2d1054']}
+                style={styles.trendingGradient}
+              >
+                <Text style={styles.emptyHorizontalText}>No trending vibes yet</Text>
+              </LinearGradient>
+            </View>
+          )}
+        </ScrollView>
+      </View>
+
+      {/* Nearby Vibes */}
+      <View style={[styles.sectionContainer, { paddingHorizontal: 16 }]}>
+        <Text style={[styles.sectionTitle, { marginBottom: 16 }]}>Nearby Vibes 📍</Text>
+
+        <View style={[styles.nearbyMapCard, SHADOWS.medium]}>
+          <View style={styles.mapGridLinesContainer}>
+            <View style={[styles.gridLine, { top: '25%' }]} />
+            <View style={[styles.gridLine, { top: '50%' }]} />
+            <View style={[styles.gridLine, { top: '75%' }]} />
+            <View style={[styles.gridLineVertical, { left: '25%' }]} />
+            <View style={[styles.gridLineVertical, { left: '50%' }]} />
+            <View style={[styles.gridLineVertical, { left: '75%' }]} />
+            
+            <View style={styles.radarCircleOuter} />
+            <View style={styles.radarCircleInner} />
+            <View style={styles.radarPulseNode} />
+            <View style={[styles.radarPulseNode, { top: '30%', left: '70%', width: 10, height: 10 }]} />
+          </View>
+
+          <View style={styles.locatorPinContainer}>
+            <View style={styles.locatorPinPulse} />
+            <View style={styles.locatorPinCore}>
+              <Ionicons name="location" size={18} color="#ffffff" />
+            </View>
+          </View>
+
+          <View style={styles.nearbyActiveBanner}>
+            <Text style={styles.nearbyActiveText}>{nearbyCount} Active Vibes Near You</Text>
+          </View>
+
+          <View style={styles.nearbyDrawerRow}>
+            <View style={styles.overlappingNearbyAvatars}>
+              <View style={styles.stackedAvatarNearby}>
+                <Image source={require('../../../assets/esha_avatar.png')} style={styles.nearbyStackedImg} />
+              </View>
+              <View style={[styles.stackedAvatarNearby, { marginLeft: -14 }]}>
+                <Image source={require('../../../assets/arjun_avatar.png')} style={styles.nearbyStackedImg} />
+              </View>
+              <View style={[styles.stackedAvatarNearby, { marginLeft: -14 }]}>
+                <Image source={require('../../../assets/aarav_avatar.png')} style={styles.nearbyStackedImg} />
+              </View>
+              <View style={[styles.stackedAvatarNearbyCount, { marginLeft: -14 }]}>
+                <Text style={styles.nearbyPlusText}>+{Math.max(0, nearbyCount - 3)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.locationInfoColumn}>
+              <Text style={styles.locationTitle}>Discovery Radar</Text>
+              <Text style={styles.locationSubtitle}>Real-time Bubbles</Text>
+              <Text style={styles.locationDistance}>WITHIN 10 KM</Text>
+            </View>
+
+            <TouchableOpacity 
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate(SCREENS.NEARBY_VIBES)}
+              style={styles.exploreBtnTouch}
+            >
+              <LinearGradient
+                colors={['#8b5cf6', '#4f6ef7']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.exploreBtnGradient}
+              >
+                <Text style={styles.exploreBtnText}>EXPLORE</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </ScrollView>
+  );
+
   return (
     <View style={[
       styles.container, 
@@ -99,179 +552,37 @@ export default function SearchScreen() {
       <StatusBar barStyle="light-content" />
       {renderHeader()}
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContainer}
-      >
-        {/* Search Bar Pill */}
-        <View style={[styles.searchBarWrapper, SHADOWS.small]}>
-          <Ionicons name="search" size={20} color="rgba(255,255,255,0.4)" style={styles.searchIcon} />
-          <TextInput
-            placeholder="Search vibes, people, or music..."
-            placeholderTextColor="rgba(255,255,255,0.4)"
-            style={styles.searchInput}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
+      {/* Search Input Bar */}
+      <View style={[styles.searchBarWrapper, SHADOWS.small]}>
+        <Ionicons name="search" size={20} color="rgba(255,255,255,0.4)" style={styles.searchIcon} />
+        <TextInput
+          placeholder="Search vibes, people, or music..."
+          placeholderTextColor="rgba(255,255,255,0.4)"
+          style={styles.searchInput}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          returnKeyType="search"
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
+            <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.5)" />
+          </TouchableOpacity>
+        )}
+      </View>
 
-        {/* People You May Know */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>People You May Know</Text>
-            <TouchableOpacity onPress={() => alert('View all people')}>
-              <Text style={styles.viewAllText}>VIEW ALL</Text>
-            </TouchableOpacity>
-          </View>
-
+      {searchQuery.trim().length > 0 ? (
+        <View style={{ flex: 1 }}>
+          {renderCategoryTabs()}
           <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.horizontalScroll}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContainer}
           >
-            {PEOPLE_DATA.map((item) => (
-              <TouchableOpacity key={item.id} style={styles.personCard} activeOpacity={0.8}>
-                <View style={styles.avatarWrapper}>
-                  {/* Glowing Profile border */}
-                  <LinearGradient
-                    colors={['#8b5cf6', '#4f6ef7']}
-                    style={styles.avatarGradientBorder}
-                  >
-                    <View style={styles.avatarInnerContainer}>
-                      <Image source={item.avatar} style={styles.personAvatar} />
-                    </View>
-                  </LinearGradient>
-                  
-                  {/* Overlaid '+' Icon badge */}
-                  <View style={styles.plusIconBadge}>
-                    <Ionicons name="add" size={14} color="#ffffff" />
-                  </View>
-                </View>
-                <Text style={styles.personName} numberOfLines={1}>{item.name}</Text>
-              </TouchableOpacity>
-            ))}
+            {renderSearchResults()}
           </ScrollView>
         </View>
-
-        {/* Trending Vibes */}
-        <View style={styles.sectionContainer}>
-          <Text style={[styles.sectionTitle, { marginHorizontal: 16, marginBottom: 16 }]}>Trending Vibes</Text>
-          
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={TRENDING_CARD_WIDTH + 16}
-            decelerationRate="fast"
-            contentContainerStyle={[styles.horizontalScroll, { paddingLeft: 16 }]}
-          >
-            {TRENDING_DATA.map((vibe) => (
-              <TouchableOpacity key={vibe.id} style={styles.trendingCardTouch} activeOpacity={0.95}>
-                <Image source={vibe.image} style={styles.trendingImage} />
-                
-                {/* Visual Gradient overlay */}
-                <LinearGradient
-                  colors={['rgba(26,5,51,0.1)', 'rgba(26,5,51,0.9)'] }
-                  style={styles.trendingGradient}
-                >
-                  <View style={styles.trendingTagRow}>
-                    {vibe.tags.map((tag, idx) => (
-                      <View key={idx} style={styles.tagCapsule}>
-                        <Text style={styles.tagText}>{tag}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  <View style={styles.trendingTextWrapper}>
-                    <Text style={styles.trendingCardTitle}>{vibe.title}</Text>
-                    <View style={styles.metricRow}>
-                      <Ionicons name={vibe.metricIcon} size={14} color="rgba(255,255,255,0.7)" style={{ marginRight: 6 }} />
-                      <Text style={styles.metricText}>{vibe.metric}</Text>
-                    </View>
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Nearby Vibes */}
-        <View style={[styles.sectionContainer, { paddingHorizontal: 16 }]}>
-          <Text style={[styles.sectionTitle, { marginBottom: 16 }]}>Nearby Vibes 📍</Text>
-
-          <View style={[styles.nearbyMapCard, SHADOWS.medium]}>
-            {/* Custom Interactive Map Graphics Backdrop */}
-            <View style={styles.mapGridLinesContainer}>
-              {/* Horizontal grid lines */}
-              <View style={[styles.gridLine, { top: '25%' }]} />
-              <View style={[styles.gridLine, { top: '50%' }]} />
-              <View style={[styles.gridLine, { top: '75%' }]} />
-              {/* Vertical grid lines */}
-              <View style={[styles.gridLineVertical, { left: '25%' }]} />
-              <View style={[styles.gridLineVertical, { left: '50%' }]} />
-              <View style={[styles.gridLineVertical, { left: '75%' }]} />
-              
-              {/* Radar circles */}
-              <View style={styles.radarCircleOuter} />
-              <View style={styles.radarCircleInner} />
-              <View style={styles.radarPulseNode} />
-              <View style={[styles.radarPulseNode, { top: '30%', left: '70%', width: 10, height: 10 }]} />
-            </View>
-
-            {/* Glowing Map Center Pin */}
-            <View style={styles.locatorPinContainer}>
-              <View style={styles.locatorPinPulse} />
-              <View style={styles.locatorPinCore}>
-                <Ionicons name="location" size={18} color="#ffffff" />
-              </View>
-            </View>
-
-            {/* Floating Top Indicator Banner */}
-            <View style={styles.nearbyActiveBanner}>
-              <Text style={styles.nearbyActiveText}>42 Active Vibes Near You</Text>
-            </View>
-
-            {/* Bottom Row details drawer */}
-            <View style={styles.nearbyDrawerRow}>
-              <View style={styles.overlappingNearbyAvatars}>
-                <View style={styles.stackedAvatarNearby}>
-                  <Image source={require('../../../assets/esha_avatar.png')} style={styles.nearbyStackedImg} />
-                </View>
-                <View style={[styles.stackedAvatarNearby, { marginLeft: -14 }]}>
-                  <Image source={require('../../../assets/arjun_avatar.png')} style={styles.nearbyStackedImg} />
-                </View>
-                <View style={[styles.stackedAvatarNearby, { marginLeft: -14 }]}>
-                  <Image source={require('../../../assets/aarav_avatar.png')} style={styles.nearbyStackedImg} />
-                </View>
-                <View style={[styles.stackedAvatarNearbyCount, { marginLeft: -14 }]}>
-                  <Text style={styles.nearbyPlusText}>+39</Text>
-                </View>
-              </View>
-
-              <View style={styles.locationInfoColumn}>
-                <Text style={styles.locationTitle}>Bandstand,</Text>
-                <Text style={styles.locationSubtitle}>Bandra West</Text>
-                <Text style={styles.locationDistance}>2.4 KM AWAY</Text>
-              </View>
-
-              <TouchableOpacity 
-                activeOpacity={0.8}
-                onPress={() => alert('Exploring Nearby Vibes...')}
-                style={styles.exploreBtnTouch}
-              >
-                <LinearGradient
-                  colors={['#8b5cf6', '#4f6ef7']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.exploreBtnGradient}
-                >
-                  <Text style={styles.exploreBtnText}>EXPLORE</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-      </ScrollView>
+      ) : (
+        renderDashboard()
+      )}
 
       <SideDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
     </View>
@@ -330,7 +641,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     marginHorizontal: 16,
     marginTop: 16,
-    marginBottom: 24,
+    marginBottom: 16,
     paddingHorizontal: 16,
     height: 48,
     borderWidth: 1,
@@ -662,4 +973,195 @@ const styles = StyleSheet.create({
     fontSize: 11,
     ...FONTS.bold,
   },
+  tabsContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeTabButton: {
+    borderBottomColor: '#a78bfa',
+  },
+  tabText: {
+    fontSize: 11,
+    color: '#7a6d8d',
+    ...FONTS.bold,
+  },
+  activeTabText: {
+    color: '#ffffff',
+  },
+  loadingContainer: {
+    paddingVertical: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: '#b0a2c7',
+    marginTop: 12,
+    ...FONTS.medium,
+  },
+  emptyContainer: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    color: '#ffffff',
+    fontSize: 15,
+    ...FONTS.bold,
+    marginTop: 16,
+  },
+  emptySubtitle: {
+    color: '#b0a2c7',
+    fontSize: 12,
+    ...FONTS.medium,
+    marginTop: 6,
+  },
+  resultsWrapper: {
+    paddingHorizontal: 16,
+  },
+  resultsSection: {
+    marginBottom: 24,
+  },
+  resultsSectionTitle: {
+    fontSize: 15,
+    ...FONTS.bold,
+    color: '#a78bfa',
+    marginBottom: 12,
+    letterSpacing: 0.5,
+  },
+  userResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  userInfoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  resultAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    marginRight: 12,
+  },
+  circleResultAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    marginRight: 12,
+  },
+  resultInfoCol: {
+    flex: 1,
+  },
+  resultNameText: {
+    fontSize: 14,
+    ...FONTS.bold,
+    color: '#ffffff',
+  },
+  resultHandleText: {
+    fontSize: 12,
+    color: '#b0a2c7',
+    ...FONTS.medium,
+    marginTop: 2,
+  },
+  followBtn: {
+    backgroundColor: '#8b5cf6',
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    minWidth: 84,
+    alignItems: 'center',
+  },
+  followingBtnActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  followBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    ...FONTS.bold,
+  },
+  followingBtnTextActive: {
+    color: '#b0a2c7',
+  },
+  vibeCardItem: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  vibeHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  vibeUserAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 10,
+  },
+  vibeInfoCol: {
+    flex: 1,
+  },
+  vibeName: {
+    fontSize: 13,
+    ...FONTS.bold,
+    color: '#ffffff',
+  },
+  vibeMoodText: {
+    fontSize: 11,
+    color: '#a78bfa',
+    ...FONTS.bold,
+    marginTop: 1,
+  },
+  vibeBodyText: {
+    fontSize: 13,
+    color: '#ffffff',
+    lineHeight: 18,
+    ...FONTS.medium,
+  },
+  songRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    backgroundColor: 'rgba(167, 139, 250, 0.1)',
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  songText: {
+    fontSize: 11,
+    color: '#a78bfa',
+    ...FONTS.bold,
+  },
+  emptyHorizontal: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  emptyHorizontalText: {
+    color: '#b0a2c7',
+    fontSize: 13,
+    ...FONTS.medium,
+  }
 });
