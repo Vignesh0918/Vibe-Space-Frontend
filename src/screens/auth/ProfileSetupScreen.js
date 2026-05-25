@@ -108,6 +108,7 @@ export default function ProfileSetupScreen() {
       photoURL: avatarUri || '',
       bio: bio.trim(),
       mood: selectedVibe,
+      email: email ? email.trim().toLowerCase() : null,
     };
 
     try {

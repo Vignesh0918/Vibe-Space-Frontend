@@ -319,9 +319,6 @@ export default function OnboardingScreen() {
             <Text style={styles.brandVibe}>Vibe</Text>
             <Text style={styles.brandSpace}>Space</Text>
           </Text>
-          <TouchableOpacity onPress={handleSkip} activeOpacity={0.7}>
-            <Text style={styles.skipText}>Skip</Text>
-          </TouchableOpacity>
         </View>
 
         {/* ── Illustration Area ── */}

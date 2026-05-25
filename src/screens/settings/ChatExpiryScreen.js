@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,15 +6,20 @@ import {
   TouchableOpacity,
   ScrollView,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSelector } from 'react-redux';
+import * as chatService from '../../services/chatService';
 import { COLORS, FONTS, SIZES, SHADOWS } from '../../constants/theme';
 
 export default function ChatExpiryScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const currentUser = useSelector((state) => state.auth.user);
   
   // State for chosen expiry option
   const [selectedOption, setSelectedOption] = useState('off');
@@ -26,9 +31,50 @@ export default function ChatExpiryScreen() {
     { id: '30d', label: '30 Days', iconName: 'calendar-outline' },
   ];
 
-  const handleSave = () => {
-    alert(`Message expiry set to: ${selectedOption === 'off' ? 'Off' : selectedOption}`);
-    navigation.goBack();
+  useEffect(() => {
+    const loadSavedSetting = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('chat_expiry_setting');
+        if (saved) {
+          setSelectedOption(saved);
+        }
+      } catch (error) {
+        console.error('Failed to load chat expiry setting:', error);
+      }
+    };
+    loadSavedSetting();
+  }, []);
+
+  const handleSave = async () => {
+    try {
+      const hoursMap = { off: 0, '24h': 24, '7d': 168, '30d': 720 };
+      const hours = hoursMap[selectedOption] ?? 0;
+      
+      // 1. Save to AsyncStorage
+      await AsyncStorage.setItem('chat_expiry_setting', selectedOption);
+      
+      // 2. Get active chats for current user
+      if (currentUser?.uid) {
+        const chatsRes = await chatService.getUserChats(currentUser.uid);
+        if (chatsRes.success && chatsRes.data) {
+          // 3. Set chat expiry for each chat
+          await Promise.all(
+            chatsRes.data.map(chat => {
+              const chatId = chat._id || chat.id;
+              return chatService.setChatExpiry(chatId, hours);
+            })
+          );
+        }
+      }
+      
+      const optionLabel = expiryOptions.find(opt => opt.id === selectedOption)?.label || selectedOption;
+      Alert.alert('Success', `Message expiry setting saved: ${optionLabel}`, [
+        { text: 'OK', onPress: () => navigation.goBack() }
+      ]);
+    } catch (error) {
+      console.error('Error saving message expiry setting:', error);
+      Alert.alert('Error', 'Failed to save message expiry settings');
+    }
   };
 
   return (

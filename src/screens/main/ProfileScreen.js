@@ -113,7 +113,7 @@ export default function ProfileScreen() {
       
       <TouchableOpacity 
         style={styles.headerButton}
-        onPress={() => navigation.navigate(SCREENS.NOTIFICATIONS)}
+        onPress={() => navigation.navigate(SCREENS.HOME_TAB, { screen: SCREENS.NOTIFICATIONS })}
       >
         <Ionicons name="notifications-outline" size={24} color="#ffffff" />
       </TouchableOpacity>

@@ -47,7 +47,7 @@ const FALLBACK_STORIES = [
   { id: '1', name: 'Your Story', avatar: null, isUser: true },
   { id: '2', name: 'Aarav', avatar: require('../../../assets/aarav_avatar.png'), borderColors: ['#8b5cf6', '#4f6ef7'] },
   { id: '3', name: 'Priya', avatar: require('../../../assets/priya_avatar.png'), borderColors: ['#ec4899', '#8b5cf6'] },
-  { id: '4', name: 'Ishaan', avatar: require('../../../assets/ishaan_avatar.png'), borderColors: ['#10b981', '#4f6ef7'] },
+  { id: '4', name: 'Ishaan', avatar: require('../../../assets/arjun_avatar.png'), borderColors: ['#10b981', '#4f6ef7'] },
 ];
 
 const FALLBACK_POSTS = [
@@ -105,6 +105,8 @@ export default function HomeScreen() {
   // Story action sheet animated state
   const [isStorySheetOpen, setIsStorySheetOpen] = useState(false);
   const storySheetAnim = useRef(new Animated.Value(300)).current;
+  
+  const isFetchingRef = useRef(false);
 
   const currentUser = useSelector((state) => state.auth.user);
 
@@ -156,6 +158,11 @@ export default function HomeScreen() {
   };
 
   const loadFeed = async (isInitial = true, isRefresh = false) => {
+    if (isFetchingRef.current && !isInitial && !isRefresh) {
+      return;
+    }
+    isFetchingRef.current = true;
+
     if (isInitial) {
       setPostsLoading(true);
     } else if (isRefresh) {
@@ -212,7 +219,11 @@ export default function HomeScreen() {
           if (isInitial || isRefresh) {
             setPosts(mappedPosts);
           } else {
-            setPosts(prev => [...prev, ...mappedPosts]);
+            setPosts(prev => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const uniqueNewPosts = mappedPosts.filter(p => !existingIds.has(p.id));
+              return [...prev, ...uniqueNewPosts];
+            });
           }
 
           setLastPostId(lastDoc);
@@ -235,6 +246,7 @@ export default function HomeScreen() {
     } finally {
       setPostsLoading(false);
       setPostsRefreshing(false);
+      isFetchingRef.current = false;
     }
   };
 
@@ -441,7 +453,14 @@ export default function HomeScreen() {
       <View style={styles.headerRightContainer}>
         <TouchableOpacity 
           style={styles.headerButton}
-          onPress={() => navigation.navigate(SCREENS.NOTIFICATIONS)}
+          onPress={() => navigation.navigate(SCREENS.HOME_TAB, { screen: SCREENS.SEARCH })}
+        >
+          <Ionicons name="search-outline" size={24} color="#ffffff" />
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.headerButton, { marginLeft: 12 }]}
+          onPress={() => navigation.navigate(SCREENS.HOME_TAB, { screen: SCREENS.NOTIFICATIONS })}
         >
           <View style={styles.notificationWrapper}>
             <Ionicons name="notifications-outline" size={24} color="#ffffff" />
@@ -451,7 +470,7 @@ export default function HomeScreen() {
         
         <TouchableOpacity 
           style={[styles.headerButton, { marginLeft: 12 }]}
-          onPress={() => navigation.navigate(SCREENS.CHAT_LIST)}
+          onPress={() => navigation.navigate(SCREENS.CHATS_TAB, { screen: SCREENS.CHAT_LIST })}
         >
           <Ionicons name="chatbubble-ellipses-outline" size={24} color="#ffffff" />
         </TouchableOpacity>

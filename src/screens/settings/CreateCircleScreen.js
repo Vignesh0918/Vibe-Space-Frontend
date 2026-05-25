@@ -21,8 +21,13 @@ import {
   TouchableOpacity, 
   TextInput,
   Image,
-  StatusBar
+  StatusBar,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
+import { useDispatch, useSelector } from 'react-redux';
+import { createCircleThunk } from '../../store/slices/circleSlice';
+import * as circleService from '../../services/circleService';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -62,6 +67,8 @@ const FRIENDS = [
 export default function CreateCircleScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const dispatch = useDispatch();
+  const currentUser = useSelector((state) => state.auth.user);
 
   const [selectedEmoji, setSelectedEmoji] = useState('🚀');
   const [circleName, setCircleName] = useState('');
@@ -69,6 +76,7 @@ export default function CreateCircleScreen() {
   const [privacy, setPrivacy] = useState('open'); // open, invite, secret
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFriends, setSelectedFriends] = useState({});
+  const [isCreating, setIsCreating] = useState(false);
 
   const handleFriendToggle = (id) => {
     setSelectedFriends(prev => ({
@@ -77,13 +85,49 @@ export default function CreateCircleScreen() {
     }));
   };
 
-  const handleCreateCircle = () => {
+  const handleCreateCircle = async () => {
     if (!circleName.trim()) {
-      alert('Please enter a circle name');
+      Alert.alert('Error', 'Please enter a circle name');
       return;
     }
-    alert(`Creating Circle "${circleName}" with vibe icon ${selectedEmoji}!`);
-    navigation.goBack();
+    
+    setIsCreating(true);
+    try {
+      const action = await dispatch(
+        createCircleThunk({
+          circleData: { name: circleName, type: 'Custom', description: '' },
+          ownerId: currentUser.uid
+        })
+      );
+
+      if (createCircleThunk.fulfilled.match(action)) {
+        const createdCircle = action.payload;
+        const circleId = createdCircle?._id || createdCircle?.id;
+        
+        if (circleId) {
+          const selectedFriendIds = Object.keys(selectedFriends).filter(id => selectedFriends[id]);
+          if (selectedFriendIds.length > 0) {
+            await Promise.all(
+              selectedFriendIds.map(friendId => 
+                circleService.addMemberToCircle(circleId, friendId)
+              )
+            );
+          }
+        }
+        
+        Alert.alert('Success', `Circle "${circleName}" created successfully!`, [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
+      } else {
+        const errorMsg = action.payload || 'Failed to create circle';
+        Alert.alert('Error', errorMsg);
+      }
+    } catch (error) {
+      console.error('Error creating circle:', error);
+      Alert.alert('Error', error.message || 'An unexpected error occurred');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const renderHeader = () => (
@@ -299,6 +343,7 @@ export default function CreateCircleScreen() {
           activeOpacity={0.8}
           style={[styles.createBtn, SHADOWS.medium]}
           onPress={handleCreateCircle}
+          disabled={isCreating}
         >
           <LinearGradient
             colors={['#a78bfa', '#60a5fa']} // Lavender/light-blue gradient
@@ -306,7 +351,11 @@ export default function CreateCircleScreen() {
             end={{ x: 1, y: 1 }}
             style={styles.createBtnGradient}
           >
-            <Text style={styles.createBtnText}>Create Circle</Text>
+            {isCreating ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text style={styles.createBtnText}>Create Circle</Text>
+            )}
           </LinearGradient>
         </TouchableOpacity>
       </ScrollView>

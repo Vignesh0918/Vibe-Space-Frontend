@@ -347,30 +347,30 @@ export default function EditProfileScreen() {
                 </ScrollView>
               </View>
             </View>
-          </ScrollView>
 
-          {/* Curved Bottom Action Area */}
-          <View style={[styles.bottomBarContainer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-            <TouchableOpacity
-              onPress={handleSaveChanges}
-              activeOpacity={0.8}
-              disabled={isSaving || usernameStatus.checking}
-              style={styles.saveButtonTouch}
-            >
-              <LinearGradient
-                colors={['#818cf8', '#c084fc']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.saveButtonGradient}
+            {/* Curved Bottom Action Area - Moved inside scroll flow */}
+            <View style={styles.bottomBarContainer}>
+              <TouchableOpacity
+                onPress={handleSaveChanges}
+                activeOpacity={0.8}
+                disabled={isSaving || usernameStatus.checking}
+                style={styles.saveButtonTouch}
               >
-                {isSaving ? (
-                  <ActivityIndicator size="small" color="#1e083c" />
-                ) : (
-                  <Text style={styles.saveButtonText}>Save Changes</Text>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
+                <LinearGradient
+                  colors={['#818cf8', '#c084fc']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.saveButtonGradient}
+                >
+                  {isSaving ? (
+                    <ActivityIndicator size="small" color="#1e083c" />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Save Changes</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
     </View>
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingBottom: 120, // space for absolute bottom bar
+    paddingBottom: 40,
   },
   avatarWrapper: {
     alignItems: 'center',
@@ -573,17 +573,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   bottomBarContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(22, 10, 42, 0.95)',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderWidth: 1.5,
-    borderColor: 'rgba(167, 139, 250, 0.12)',
-    paddingHorizontal: 24,
-    paddingTop: 20,
+    width: '100%',
+    marginTop: 24,
+    marginBottom: 20,
   },
   saveButtonTouch: {
     width: '100%',

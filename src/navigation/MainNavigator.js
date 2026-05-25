@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { SCREENS } from '../constants';
 import { COLORS, SHADOWS, SIZES, FONTS } from '../constants/theme';
 
@@ -29,19 +30,26 @@ function CustomTabBar({ state, descriptors, navigation }) {
   const insets = useSafeAreaInsets();
   const { unreadCount } = useSelector((state) => state.chat);
 
-  // Check if we should hide the tab bar on StoryViewer or PostDetail screens.
-  // We inspect the navigation state of the currently active tab (HomeTab).
+  // Check if we should hide the tab bar on sub-screens.
+  // We hide it on any screen that is not a root screen of the main tabs.
   const activeTabRoute = state.routes[state.index];
   let shouldHideTabBar = false;
 
-  if (activeTabRoute.name === SCREENS.HOME_TAB && activeTabRoute.state) {
-    const nestedRoutes = activeTabRoute.state.routes;
+  const focusedRouteName = getFocusedRouteNameFromRoute(activeTabRoute);
+  if (focusedRouteName) {
+    const rootScreens = [
+      SCREENS.HOME,
+      SCREENS.CIRCLES,
+      SCREENS.CHAT_LIST,
+      SCREENS.PROFILE,
+    ];
+    if (!rootScreens.includes(focusedRouteName)) {
+      shouldHideTabBar = true;
+    }
+  } else if (activeTabRoute.state) {
     const activeNestedIndex = activeTabRoute.state.index;
-    if (nestedRoutes && nestedRoutes[activeNestedIndex]) {
-      const activeNestedName = nestedRoutes[activeNestedIndex].name;
-      if (activeNestedName === SCREENS.STORY_VIEWER || activeNestedName === SCREENS.POST_DETAIL) {
-        shouldHideTabBar = true;
-      }
+    if (activeNestedIndex > 0) {
+      shouldHideTabBar = true;
     }
   }
 

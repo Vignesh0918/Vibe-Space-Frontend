@@ -66,7 +66,7 @@ const STORIES_DATA = [
       },
       {
         id: 's3',
-        image: require('../../../assets/concert_image.png'),
+        image: require('../../../assets/post_workstation.png'),
         time: '45m ago',
         location: 'Mumbai',
         trending: true,

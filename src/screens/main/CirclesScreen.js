@@ -13,7 +13,7 @@
  *   - Trending tag, club name, active members indicator, and gradient "Join" CTA.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -26,7 +26,7 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -145,11 +145,11 @@ export default function CirclesScreen() {
 
   const currentUser = useSelector((state) => state.auth.user);
 
-  useEffect(() => {
+  const fetchUserCirclesData = useCallback(() => {
     if (!currentUser?.uid) {
       setCircles(FALLBACK_CIRCLES);
       setIsLoading(false);
-      return;
+      return () => {};
     }
 
     setIsLoading(true);
@@ -162,8 +162,15 @@ export default function CirclesScreen() {
       setIsLoading(false);
     });
 
-    return () => unsubscribe();
+    return unsubscribe;
   }, [currentUser?.uid]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const unsubscribe = fetchUserCirclesData();
+      return () => unsubscribe();
+    }, [fetchUserCirclesData])
+  );
 
   const handleCirclePress = (circle) => {
     navigation.navigate(SCREENS.CIRCLE_DETAIL, { 
@@ -186,7 +193,7 @@ export default function CirclesScreen() {
       
       <TouchableOpacity 
         style={styles.headerButton}
-        onPress={() => navigation.navigate(SCREENS.NOTIFICATIONS)}
+        onPress={() => navigation.navigate(SCREENS.HOME_TAB, { screen: SCREENS.NOTIFICATIONS })}
       >
         <View style={styles.notificationWrapper}>
           <Ionicons name="notifications-outline" size={24} color="#ffffff" />
@@ -374,7 +381,7 @@ const styles = StyleSheet.create({
   scrollContainer: {
     paddingHorizontal: SIZES.spacingMd || 16,
     paddingTop: SIZES.spacingMd || 16,
-    paddingBottom: 32,
+    paddingBottom: 110,
   },
   sectionHeader: {
     marginBottom: 16,

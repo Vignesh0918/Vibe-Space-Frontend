@@ -110,8 +110,7 @@ export default function SideDrawer({ isOpen, onClose }) {
         navigation.navigate(SCREENS.CIRCLES_TAB, { screen: SCREENS.CIRCLES });
       } else if (screenName === SCREENS.CREATE_CIRCLE) {
         navigation.navigate(SCREENS.CIRCLES_TAB, { screen: SCREENS.CREATE_CIRCLE });
-      } else if (screenName === SCREENS.NEARBY_VIBES) {
-        navigation.navigate(SCREENS.HOME_TAB, { screen: SCREENS.NEARBY_VIBES });
+
       } else if (screenName === SCREENS.PROFILE) {
         navigation.navigate(SCREENS.PROFILE_TAB, { screen: SCREENS.PROFILE });
       } else if (screenName === SCREENS.CHAT_EXPIRY) {
@@ -163,7 +162,7 @@ export default function SideDrawer({ isOpen, onClose }) {
     { label: 'Feed / Home', icon: 'sparkles-outline', screen: SCREENS.HOME },
     { label: 'Circles Manager', icon: 'people-outline', screen: SCREENS.CIRCLES },
     { label: 'Create Circle', icon: 'add-circle-outline', screen: SCREENS.CREATE_CIRCLE },
-    { label: 'Nearby Vibes Map', icon: 'map-outline', screen: SCREENS.NEARBY_VIBES },
+
     { label: 'Chat Expiry Settings', icon: 'hourglass-outline', screen: SCREENS.CHAT_EXPIRY },
     { label: 'Settings', icon: 'settings-outline', screen: SCREENS.SETTINGS },
   ];

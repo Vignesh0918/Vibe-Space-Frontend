@@ -14,7 +14,6 @@ import { COLORS } from '../constants/theme';
 import HomeScreen from '../screens/main/HomeScreen';
 import StoryViewerScreen from '../screens/main/StoryViewerScreen';
 import NotificationsScreen from '../screens/main/NotificationsScreen';
-import NearbyVibesScreen from '../screens/main/NearbyVibesScreen';
 import SearchScreen from '../screens/main/SearchScreen';
 import PostDetailScreen from '../screens/main/PostDetailScreen';
 
@@ -55,7 +54,6 @@ export function HomeStack() {
       <Stack.Screen name={SCREENS.STORY_VIEWER} component={StoryViewerScreen} />
       <Stack.Screen name={SCREENS.NOTIFICATIONS} component={NotificationsScreen} />
       <Stack.Screen name={SCREENS.SEARCH} component={SearchScreen} />
-      <Stack.Screen name={SCREENS.NEARBY_VIBES} component={NearbyVibesScreen} />
       <Stack.Screen name={SCREENS.POST_DETAIL} component={PostDetailScreen} />
       <Stack.Screen name={SCREENS.BOOKMARKS} component={BookmarksScreen} />
       <Stack.Screen name={SCREENS.USER_PROFILE} component={UserProfileScreen} />

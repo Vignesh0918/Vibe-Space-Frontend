@@ -45,7 +45,6 @@ import PropTypes from 'prop-types';
  * @property {undefined} ProfileScreen - User profile, grid of posts, current status.
  * @property {undefined} SearchScreen - Search users, posts, and circles.
  * @property {undefined} NotificationsScreen - Activity logs, comments, circle invites.
- * @property {undefined} NearbyVibesScreen - Map screen displaying coordinates.
  * 
  * @property {Object} StoryViewerScreen - Fullscreen story renderer.
  * @property {string} StoryViewerScreen.storyId - The target story item ID.

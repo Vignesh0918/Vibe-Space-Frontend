@@ -92,7 +92,7 @@ const MESSAGES = [
     text: 'Check the vibe from last year! 🔥',
     time: '21:15',
     isMine: false,
-    image: require('../../../assets/concert_image.png'),
+    image: require('../../../assets/post_swirl.png'),
   },
 ];
 

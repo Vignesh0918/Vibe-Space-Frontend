@@ -35,11 +35,11 @@ import { SCREENS } from '../../constants';
 import SideDrawer from '../../components/common/SideDrawer';
 import PostCard from '../../components/feed/PostCard';
 import { performSearch, clearSearch } from '../../store/slices/searchSlice';
+import { setUser } from '../../store/slices/authSlice';
 import * as authService from '../../services/authService';
 import * as postService from '../../services/postService';
 import * as circleService from '../../services/circleService';
-import * as nearbyVibeService from '../../services/nearbyVibeService';
-import { getCurrentLocation } from '../../services/locationService';
+
 
 const { width } = Dimensions.get('window');
 const TRENDING_CARD_WIDTH = width * 0.65;
@@ -61,7 +61,7 @@ export default function SearchScreen() {
   // Dashboard state
   const [recommendedUsers, setRecommendedUsers] = useState([]);
   const [trendingPosts, setTrendingPosts] = useState([]);
-  const [nearbyCount, setNearbyCount] = useState(42); // fallback
+
   const [followingIds, setFollowingIds] = useState([]);
   const [joinedCircleIds, setJoinedCircleIds] = useState([]);
 
@@ -79,14 +79,7 @@ export default function SearchScreen() {
           setTrendingPosts(trendRes.data || []);
         }
 
-        const locRes = await getCurrentLocation();
-        if (locRes.success && locRes.data) {
-          const { latitude, longitude } = locRes.data;
-          const nearbyRes = await nearbyVibeService.getNearbyVibes(latitude, longitude);
-          if (nearbyRes.success && nearbyRes.data) {
-            setNearbyCount(nearbyRes.data.length);
-          }
-        }
+
       } catch (err) {
         console.warn('Error loading search initial metrics:', err);
       }
@@ -129,18 +122,29 @@ export default function SearchScreen() {
 
   const handleFollowToggle = async (targetUserId) => {
     const isFollowing = followingIds.includes(targetUserId);
+    let nextFollowing;
     if (isFollowing) {
-      setFollowingIds(prev => prev.filter(id => id !== targetUserId));
+      nextFollowing = followingIds.filter(id => id !== targetUserId);
+      setFollowingIds(nextFollowing);
       await authService.unfollowUser(targetUserId);
     } else {
-      setFollowingIds(prev => [...prev, targetUserId]);
+      nextFollowing = [...followingIds, targetUserId];
+      setFollowingIds(nextFollowing);
       await authService.followUser(targetUserId);
     }
+    
+    // Sync Redux state
+    dispatch(setUser({
+      ...currentUser,
+      following: nextFollowing
+    }));
+
     // Sync backend fully
     if (currentUser?.uid) {
       const res = await authService.getUserProfile(currentUser.uid);
       if (res.success && res.data) {
         setFollowingIds(res.data.following || []);
+        dispatch(setUser(res.data));
       }
     }
   };
@@ -167,7 +171,7 @@ export default function SearchScreen() {
       
       <TouchableOpacity 
         style={styles.headerButton}
-        onPress={() => navigation.navigate(SCREENS.NOTIFICATIONS)}
+        onPress={() => navigation.navigate(SCREENS.HOME_TAB, { screen: SCREENS.NOTIFICATIONS })}
       >
         <View style={styles.notificationWrapper}>
           <Ionicons name="notifications-outline" size={24} color="#ffffff" />
@@ -385,10 +389,14 @@ export default function SearchScreen() {
                   </LinearGradient>
                   
                   <TouchableOpacity 
-                    style={styles.plusIconBadge}
+                    style={[styles.plusIconBadge, followingIds.includes(item.id || item._id) && styles.plusIconBadgeActive]}
                     onPress={() => handleFollowToggle(item.id || item._id)}
                   >
-                    <Ionicons name="add" size={14} color="#ffffff" />
+                    <Ionicons 
+                      name={followingIds.includes(item.id || item._id) ? "checkmark" : "add"} 
+                      size={14} 
+                      color="#ffffff" 
+                    />
                   </TouchableOpacity>
                 </View>
                 <Text style={styles.personName} numberOfLines={1}>{item.displayName}</Text>
@@ -427,7 +435,7 @@ export default function SearchScreen() {
                   onPress={() => navigation.navigate(SCREENS.POST_DETAIL, { postId: post.id })}
                 >
                   <Image 
-                    source={post.imageURL ? { uri: post.imageURL } : require('../../../assets/concert_image.png')} 
+                    source={post.imageURL ? { uri: post.imageURL } : require('../../../assets/post_swirl.png')} 
                     style={styles.trendingImage} 
                   />
                   
@@ -469,75 +477,7 @@ export default function SearchScreen() {
         </ScrollView>
       </View>
 
-      {/* Nearby Vibes */}
-      <View style={[styles.sectionContainer, { paddingHorizontal: 16 }]}>
-        <Text style={[styles.sectionTitle, { marginBottom: 16 }]}>Nearby Vibes 📍</Text>
 
-        <View style={[styles.nearbyMapCard, SHADOWS.medium]}>
-          <View style={styles.mapGridLinesContainer}>
-            <View style={[styles.gridLine, { top: '25%' }]} />
-            <View style={[styles.gridLine, { top: '50%' }]} />
-            <View style={[styles.gridLine, { top: '75%' }]} />
-            <View style={[styles.gridLineVertical, { left: '25%' }]} />
-            <View style={[styles.gridLineVertical, { left: '50%' }]} />
-            <View style={[styles.gridLineVertical, { left: '75%' }]} />
-            
-            <View style={styles.radarCircleOuter} />
-            <View style={styles.radarCircleInner} />
-            <View style={styles.radarPulseNode} />
-            <View style={[styles.radarPulseNode, { top: '30%', left: '70%', width: 10, height: 10 }]} />
-          </View>
-
-          <View style={styles.locatorPinContainer}>
-            <View style={styles.locatorPinPulse} />
-            <View style={styles.locatorPinCore}>
-              <Ionicons name="location" size={18} color="#ffffff" />
-            </View>
-          </View>
-
-          <View style={styles.nearbyActiveBanner}>
-            <Text style={styles.nearbyActiveText}>{nearbyCount} Active Vibes Near You</Text>
-          </View>
-
-          <View style={styles.nearbyDrawerRow}>
-            <View style={styles.overlappingNearbyAvatars}>
-              <View style={styles.stackedAvatarNearby}>
-                <Image source={require('../../../assets/esha_avatar.png')} style={styles.nearbyStackedImg} />
-              </View>
-              <View style={[styles.stackedAvatarNearby, { marginLeft: -14 }]}>
-                <Image source={require('../../../assets/arjun_avatar.png')} style={styles.nearbyStackedImg} />
-              </View>
-              <View style={[styles.stackedAvatarNearby, { marginLeft: -14 }]}>
-                <Image source={require('../../../assets/aarav_avatar.png')} style={styles.nearbyStackedImg} />
-              </View>
-              <View style={[styles.stackedAvatarNearbyCount, { marginLeft: -14 }]}>
-                <Text style={styles.nearbyPlusText}>+{Math.max(0, nearbyCount - 3)}</Text>
-              </View>
-            </View>
-
-            <View style={styles.locationInfoColumn}>
-              <Text style={styles.locationTitle}>Discovery Radar</Text>
-              <Text style={styles.locationSubtitle}>Real-time Bubbles</Text>
-              <Text style={styles.locationDistance}>WITHIN 10 KM</Text>
-            </View>
-
-            <TouchableOpacity 
-              activeOpacity={0.8}
-              onPress={() => navigation.navigate(SCREENS.NEARBY_VIBES)}
-              style={styles.exploreBtnTouch}
-            >
-              <LinearGradient
-                colors={['#8b5cf6', '#4f6ef7']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.exploreBtnGradient}
-              >
-                <Text style={styles.exploreBtnText}>EXPLORE</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
     </ScrollView>
   );
 
@@ -725,6 +665,9 @@ const styles = StyleSheet.create({
     borderColor: '#1a0533',
     zIndex: 5,
   },
+  plusIconBadgeActive: {
+    backgroundColor: '#10b981', // green for checkmark
+  },
   personName: {
     fontSize: 12,
     color: '#ffffff',
@@ -787,192 +730,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     ...FONTS.medium,
   },
-  nearbyMapCard: {
-    width: '100%',
-    height: 260,
-    backgroundColor: '#0c0317',
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: 'rgba(167, 139, 250, 0.18)',
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  mapGridLinesContainer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  gridLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(167, 139, 250, 0.08)',
-  },
-  gridLineVertical: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 1,
-    backgroundColor: 'rgba(167, 139, 250, 0.08)',
-  },
-  radarCircleOuter: {
-    position: 'absolute',
-    top: '30%',
-    left: '35%',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 1,
-    borderColor: 'rgba(79, 110, 247, 0.1)',
-  },
-  radarCircleInner: {
-    position: 'absolute',
-    top: '40%',
-    left: '42%',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: 'rgba(79, 110, 247, 0.15)',
-  },
-  radarPulseNode: {
-    position: 'absolute',
-    top: '38%',
-    left: '38%',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#a78bfa',
-    shadowColor: '#a78bfa',
-    shadowOpacity: 0.8,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  locatorPinContainer: {
-    position: 'absolute',
-    top: '45%',
-    left: '48%',
-    transform: [{ translateX: -15 }, { translateY: -15 }],
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 40,
-    height: 40,
-  },
-  locatorPinPulse: {
-    position: 'absolute',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(79, 110, 247, 0.3)',
-    transform: [{ scale: 1.3 }],
-  },
-  locatorPinCore: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#4f6ef7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#4f6ef7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.6,
-    shadowRadius: 8,
-  },
-  nearbyActiveBanner: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    backgroundColor: 'rgba(10, 3, 20, 0.75)',
-    borderRadius: 20,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-  },
-  nearbyActiveText: {
-    color: '#ffffff',
-    fontSize: 11,
-    ...FONTS.bold,
-  },
-  nearbyDrawerRow: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(26, 5, 51, 0.95)',
-    borderTopWidth: 1.5,
-    borderTopColor: 'rgba(167, 139, 250, 0.15)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    justifyContent: 'space-between',
-  },
-  overlappingNearbyAvatars: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  stackedAvatarNearby: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: '#0c0317',
-    overflow: 'hidden',
-  },
-  nearbyStackedImg: {
-    width: '100%',
-    height: '100%',
-  },
-  stackedAvatarNearbyCount: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#2d1054',
-    borderWidth: 1.5,
-    borderColor: '#0c0317',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nearbyPlusText: {
-    color: '#ffffff',
-    fontSize: 9,
-    ...FONTS.bold,
-  },
-  locationInfoColumn: {
-    flex: 1,
-    paddingHorizontal: 12,
-  },
-  locationTitle: {
-    fontSize: 12,
-    ...FONTS.bold,
-    color: '#ffffff',
-  },
-  locationSubtitle: {
-    fontSize: 12,
-    ...FONTS.bold,
-    color: '#ffffff',
-  },
-  locationDistance: {
-    fontSize: 10,
-    color: COLORS.textMuted || '#a78bfa',
-    ...FONTS.bold,
-    marginTop: 2,
-    opacity: 0.9,
-  },
-  exploreBtnTouch: {
-    borderRadius: 18,
-    overflow: 'hidden',
-  },
-  exploreBtnGradient: {
-    paddingVertical: 8,
-    paddingHorizontal: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  exploreBtnText: {
-    color: '#ffffff',
-    fontSize: 11,
-    ...FONTS.bold,
-  },
+
   tabsContainer: {
     flexDirection: 'row',
     borderBottomWidth: 1,

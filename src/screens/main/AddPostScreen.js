@@ -50,9 +50,6 @@ const GALLERY_IMAGES = [
   require('../../../assets/post_workstation.png'),
   require('../../../assets/media__1779348639761.png'),
   require('../../../assets/media__1779348907328.png'),
-  require('../../../assets/media__1779349699782.png'),
-  require('../../../assets/media__1779349908803.png'),
-  require('../../../assets/media__1779350518027.png'),
   require('../../../assets/media__1779350622091.png'),
 ];
 
@@ -70,9 +67,6 @@ const PRESET_IMAGE_URLS = [
   'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800', // post_workstation.png
   'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=800', // media__1779348639761.png
   'https://images.unsplash.com/photo-1533158326339-7f3cf2404354?w=800', // media__1779348907328.png
-  'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=800', // media__1779349699782.png
-  'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=800', // media__1779349908803.png
-  'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=800', // media__1779350518027.png
   'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800', // media__1779350622091.png
 ];
 
@@ -237,7 +231,7 @@ export default function AddPostScreen() {
       const response = await createPost(postPayload);
       if (response.success) {
         Alert.alert('Success', 'Post shared successfully!');
-        navigation.navigate(SCREENS.HOME);
+        navigation.navigate(SCREENS.HOME_TAB, { screen: SCREENS.HOME });
       } else {
         Alert.alert('Error', response.error || 'Failed to share post');
       }

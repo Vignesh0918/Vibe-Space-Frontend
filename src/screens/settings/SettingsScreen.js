@@ -25,7 +25,7 @@ import { SCREENS } from '../../constants';
 export default function SettingsScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const [isDarkTheme, setIsDarkTheme] = useState(true);
+
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>
@@ -111,7 +111,7 @@ export default function SettingsScreen() {
           <TouchableOpacity 
             activeOpacity={0.8}
             style={styles.optionCard}
-            onPress={() => navigation.navigate(SCREENS.NOTIFICATIONS)}
+            onPress={() => navigation.navigate(SCREENS.HOME_TAB, { screen: SCREENS.NOTIFICATIONS })}
           >
             <View style={styles.optionLeft}>
               <View style={[styles.iconCircle, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
@@ -122,21 +122,6 @@ export default function SettingsScreen() {
             <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.4)" />
           </TouchableOpacity>
 
-          {/* Theme Toggle */}
-          <View style={styles.optionCard}>
-            <View style={styles.optionLeft}>
-              <View style={[styles.iconCircle, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-                <Ionicons name="moon-outline" size={20} color="#10b981" />
-              </View>
-              <Text style={styles.optionTitle}>Theme</Text>
-            </View>
-            <Switch
-              value={isDarkTheme}
-              onValueChange={setIsDarkTheme}
-              trackColor={{ false: '#3d1a6e', true: '#8b5cf6' }}
-              thumbColor="#ffffff"
-            />
-          </View>
 
           {/* Delete Account */}
           <TouchableOpacity 

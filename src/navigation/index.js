@@ -45,7 +45,6 @@ const linking = {
           [SCREENS.POST_DETAIL]: 'post/:postId',
           [SCREENS.NOTIFICATIONS]: 'notifications',
           [SCREENS.SEARCH]: 'search',
-          [SCREENS.NEARBY_VIBES]: 'nearby',
         }
       },
       [SCREENS.CIRCLES_TAB]: {

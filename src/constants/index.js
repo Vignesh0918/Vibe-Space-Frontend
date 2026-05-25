@@ -86,7 +86,6 @@ export const SCREENS = {
   PROFILE: 'ProfileScreen',
   SEARCH: 'SearchScreen',
   NOTIFICATIONS: 'NotificationsScreen',
-  NEARBY_VIBES: 'NearbyVibesScreen',
   STORY_VIEWER: 'StoryViewerScreen',
   POST_DETAIL: 'PostDetailScreen',
   VIBE_DETAIL: 'VibeDetailScreen',

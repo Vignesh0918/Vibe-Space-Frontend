@@ -35,6 +35,7 @@ import { listenToUserChats, leaveOrDeleteChat, getOrCreateDMChat } from '../../s
 import { getUserFollowing, getRecommendedUsers } from '../../services/authService';
 import ChatListItem from '../../components/chat/ChatListItem';
 import EmptyState from '../../components/common/EmptyState';
+import SideDrawer from '../../components/common/SideDrawer';
 
 const { width } = Dimensions.get('window');
 
@@ -48,6 +49,7 @@ export default function ChatListScreen() {
   const [chats, setChats] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   
   // Compose modal states
   const [isComposeVisible, setIsComposeVisible] = useState(false);
@@ -171,11 +173,11 @@ export default function ChatListScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.openDrawer && navigation.openDrawer()}>
+        <TouchableOpacity style={styles.headerBtn} onPress={() => setIsDrawerOpen(true)}>
           <Ionicons name="menu" size={28} color="#ffffff" />
         </TouchableOpacity>
         <Text style={styles.headerLogo}>VibeSpace</Text>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.navigate(SCREENS.NOTIFICATIONS)}>
+        <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.navigate(SCREENS.HOME_TAB, { screen: SCREENS.NOTIFICATIONS })}>
           <View style={styles.notifWrapper}>
             <Ionicons name="notifications-outline" size={24} color="#ffffff" />
             <View style={styles.notifDot} />
@@ -316,10 +318,12 @@ export default function ChatListScreen() {
                 }
               />
             )}
+            </View>
           </View>
-        </View>
-      </Modal>
-    </View>
+        </Modal>
+
+        <SideDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+      </View>
   );
 }
 

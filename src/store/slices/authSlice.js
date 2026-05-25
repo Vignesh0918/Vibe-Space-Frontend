@@ -27,13 +27,26 @@ export const loginWithGoogleThunk = createAsyncThunk(
 
     const { uid, displayName, email, photoURL } = result.data;
 
-    // Check if user has a MongoDB profile
+    // Check if user has a MongoDB profile by UID first
     try {
-      const profileResult = await authService.getUserProfile(uid);
+      let profileResult = await authService.getUserProfile(uid);
+      
+      // If not found by UID, check if we can locate them by email
+      if ((!profileResult.success || !profileResult.data) && email) {
+        const emailSearch = await authService.getUserProfileByEmail(email);
+        if (emailSearch.success && emailSearch.data) {
+          // Profile exists under this email! Let's trigger a UID sync to link it
+          const syncRes = await authService.syncProfileUid(email);
+          if (syncRes.success) {
+            profileResult = syncRes;
+          }
+        }
+      }
+
       if (profileResult.success && profileResult.data) {
         // Existing user — log them in fully
         const profileData = {
-          uid,
+          uid: profileResult.data.uid, // use the updated/synced UID
           displayName: profileResult.data.displayName,
           username: profileResult.data.username,
           photoURL: profileResult.data.photoURL,
@@ -44,8 +57,62 @@ export const loginWithGoogleThunk = createAsyncThunk(
         dispatch(setUser(profileData));
         return { profileExists: true, userData: profileData };
       }
-    } catch {
-      // Profile doesn't exist — treat as new user
+    } catch (error) {
+      console.warn('Profile check by UID/email failed:', error.message || error);
+    }
+
+    // New user — return Google credentials for profile setup
+    return {
+      profileExists: false,
+      userData: { uid, displayName, email, photoURL },
+    };
+  }
+);
+
+// Async thunk to sign in with a real Google account.
+// Checks MongoDB for existing profile after authentication.
+export const loginWithRealGoogleThunk = createAsyncThunk(
+  'auth/loginWithRealGoogleThunk',
+  async (_, { dispatch, rejectWithValue }) => {
+    const result = await authService.loginWithRealGoogle();
+    if (!result.success) {
+      return rejectWithValue(result.error);
+    }
+
+    const { uid, displayName, email, photoURL } = result.data;
+
+    // Check if user has a MongoDB profile by UID first
+    try {
+      let profileResult = await authService.getUserProfile(uid);
+      
+      // If not found by UID, check if we can locate them by email
+      if ((!profileResult.success || !profileResult.data) && email) {
+        const emailSearch = await authService.getUserProfileByEmail(email);
+        if (emailSearch.success && emailSearch.data) {
+          // Profile exists under this email! Let's trigger a UID sync to link it
+          const syncRes = await authService.syncProfileUid(email);
+          if (syncRes.success) {
+            profileResult = syncRes;
+          }
+        }
+      }
+
+      if (profileResult.success && profileResult.data) {
+        // Existing user — log them in fully
+        const profileData = {
+          uid: profileResult.data.uid, // use the updated/synced UID
+          displayName: profileResult.data.displayName,
+          username: profileResult.data.username,
+          photoURL: profileResult.data.photoURL,
+          bio: profileResult.data.bio,
+          mood: profileResult.data.mood,
+          email,
+        };
+        dispatch(setUser(profileData));
+        return { profileExists: true, userData: profileData };
+      }
+    } catch (error) {
+      console.warn('Profile check by UID/email failed:', error.message || error);
     }
 
     // New user — return Google credentials for profile setup
@@ -108,6 +175,18 @@ const authSlice = createSlice({
         state.isLoading = false;
       })
       .addCase(loginWithGoogleThunk.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload || action.error.message;
+      })
+      // Real Google Login
+      .addCase(loginWithRealGoogleThunk.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(loginWithRealGoogleThunk.fulfilled, (state) => {
+        state.isLoading = false;
+      })
+      .addCase(loginWithRealGoogleThunk.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload || action.error.message;
       })

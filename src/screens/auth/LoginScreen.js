@@ -22,29 +22,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AntDesign, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SIZES, FONTS } from '../../constants/theme';
 import { SCREENS } from '../../constants';
-import { loginWithGoogleThunk, setUser } from '../../store/slices/authSlice';
+import { loginWithRealGoogleThunk } from '../../store/slices/authSlice';
 
 const { width } = Dimensions.get('window');
-
-// Simulated Google accounts for the chooser modal
-const MOCK_GOOGLE_ACCOUNTS = [
-  {
-    id: '1',
-    displayName: 'Vicky Kumar',
-    email: 'vicky.kumar@gmail.com',
-    photoURL: null,
-    initials: 'VK',
-    color: '#4285F4',
-  },
-  {
-    id: '2',
-    displayName: 'VibeSpace User',
-    email: 'vibespace.user@gmail.com',
-    photoURL: null,
-    initials: 'VU',
-    color: '#EA4335',
-  },
-];
 
 /**
  * LoginScreen
@@ -54,7 +34,7 @@ const MOCK_GOOGLE_ACCOUNTS = [
  * - Phone number input with country code (+91) selector and divider
  * - Gradient "Send OTP →" button with loading state
  * - OR divider line
- * - "Continue with Google" social login button with account chooser modal
+ * - "Continue with Google" social login button
  * - Footer terms agreement text
  * - Bottom Secure & Fluid informational badges
  */
@@ -64,50 +44,16 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { isLoading } = useSelector((state) => state.auth);
 
-  const [isGoogleModalVisible, setIsGoogleModalVisible] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [selectedGoogleAccount, setSelectedGoogleAccount] = useState(null);
-  const [modalAnim] = useState(new Animated.Value(0));
 
-  const openGoogleModal = () => {
-    setIsGoogleModalVisible(true);
-    Animated.spring(modalAnim, {
-      toValue: 1,
-      tension: 65,
-      friction: 10,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const closeGoogleModal = () => {
-    Animated.timing(modalAnim, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      setIsGoogleModalVisible(false);
-      setSelectedGoogleAccount(null);
-    });
-  };
-
-  const handleSelectGoogleAccount = async (account) => {
-    setSelectedGoogleAccount(account.id);
+  const handleRealGoogleLogin = async () => {
     setGoogleLoading(true);
-
     try {
-      const result = await dispatch(loginWithGoogleThunk({
-        googleUser: {
-          displayName: account.displayName,
-          email: account.email,
-          photoURL: account.photoURL,
-        },
-      })).unwrap();
-
+      const result = await dispatch(loginWithRealGoogleThunk()).unwrap();
       setGoogleLoading(false);
-      closeGoogleModal();
 
       if (result.profileExists) {
-        // User has a MongoDB profile — Redux setUser already dispatched, auto-navigates
+        // Existing user — Redux setUser already dispatched, auto-navigates
       } else {
         // New user — go to profile setup with Google details
         navigation.navigate(SCREENS.PROFILE_SETUP, {
@@ -120,40 +66,10 @@ export default function LoginScreen() {
       }
     } catch (error) {
       setGoogleLoading(false);
-      closeGoogleModal();
       Alert.alert('Sign-In Failed', error || 'Could not sign in with Google. Please try again.');
     }
   };
 
-  const renderGoogleAccountItem = (account) => {
-    const isSelected = selectedGoogleAccount === account.id;
-    return (
-      <TouchableOpacity
-        key={account.id}
-        style={[styles.googleAccountItem, isSelected && styles.googleAccountItemSelected]}
-        onPress={() => handleSelectGoogleAccount(account)}
-        activeOpacity={0.7}
-        disabled={googleLoading}
-      >
-        <View style={[styles.googleAccountAvatar, { backgroundColor: account.color }]}>
-          {account.photoURL ? (
-            <Image source={{ uri: account.photoURL }} style={styles.googleAccountPhoto} />
-          ) : (
-            <Text style={styles.googleAccountInitials}>{account.initials}</Text>
-          )}
-        </View>
-        <View style={styles.googleAccountInfo}>
-          <Text style={styles.googleAccountName}>{account.displayName}</Text>
-          <Text style={styles.googleAccountEmail}>{account.email}</Text>
-        </View>
-        {isSelected && googleLoading ? (
-          <ActivityIndicator size="small" color="#818cf8" />
-        ) : (
-          <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.3)" />
-        )}
-      </TouchableOpacity>
-    );
-  };
 
   return (
     <View style={[
@@ -190,15 +106,21 @@ export default function LoginScreen() {
 
               {/* Google Button */}
               <TouchableOpacity
-                onPress={openGoogleModal}
+                onPress={handleRealGoogleLogin}
                 activeOpacity={0.7}
                 style={styles.googleButton}
-                disabled={isLoading}
+                disabled={isLoading || googleLoading}
               >
-                <View style={styles.googleIconBg}>
-                  <AntDesign name="google" size={18} color="#ffffff" />
-                </View>
-                <Text style={styles.googleButtonText}>Continue with Google</Text>
+                {googleLoading ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <>
+                    <View style={styles.googleIconBg}>
+                      <AntDesign name="google" size={18} color="#ffffff" />
+                    </View>
+                    <Text style={styles.googleButtonText}>Continue with Google</Text>
+                  </>
+                )}
               </TouchableOpacity>
 
               {/* Terms Text */}
@@ -236,71 +158,6 @@ export default function LoginScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
-
-      {/* Google Account Chooser Modal */}
-      <Modal
-        visible={isGoogleModalVisible}
-        transparent={true}
-        animationType="none"
-        onRequestClose={closeGoogleModal}
-      >
-        <TouchableOpacity 
-          style={styles.modalOverlay} 
-          activeOpacity={1} 
-          onPress={closeGoogleModal}
-        >
-          <Animated.View 
-            style={[
-              styles.googleModalContainer,
-              {
-                transform: [{
-                  scale: modalAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.85, 1],
-                  }),
-                }],
-                opacity: modalAnim,
-              }
-            ]}
-          >
-            <TouchableOpacity activeOpacity={1}>
-              {/* Modal Header */}
-              <View style={styles.googleModalHeader}>
-                <View style={styles.googleModalLogoRow}>
-                  <AntDesign name="google" size={22} color="#ffffff" />
-                  <Text style={styles.googleModalTitle}>Choose an account</Text>
-                </View>
-                <Text style={styles.googleModalSubtitle}>
-                  to continue to VibeSpace
-                </Text>
-              </View>
-
-              {/* Divider */}
-              <View style={styles.googleModalDivider} />
-
-              {/* Account List */}
-              <View style={styles.googleAccountsList}>
-                {MOCK_GOOGLE_ACCOUNTS.map(renderGoogleAccountItem)}
-              </View>
-
-              {/* Add another account */}
-              <TouchableOpacity style={styles.addAccountButton} activeOpacity={0.7} disabled={googleLoading}>
-                <View style={styles.addAccountIconBg}>
-                  <MaterialIcons name="person-add-alt" size={20} color="#818cf8" />
-                </View>
-                <Text style={styles.addAccountText}>Use another account</Text>
-              </TouchableOpacity>
-
-              {/* Footer */}
-              <View style={styles.googleModalFooter}>
-                <Text style={styles.googleModalFooterText}>
-                  To continue, Google will share your name, email, and profile picture with VibeSpace.
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </Animated.View>
-        </TouchableOpacity>
-      </Modal>
     </View>
   );
 }
@@ -658,5 +515,42 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: 'rgba(255, 255, 255, 0.4)',
     lineHeight: 15,
+  },
+  customEmailSection: {
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(129, 140, 248, 0.08)',
+  },
+  customEmailTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.55)',
+    marginBottom: 8,
+  },
+  customEmailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(26, 5, 51, 0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.2)',
+    borderRadius: 12,
+    height: 44,
+    paddingLeft: 12,
+    paddingRight: 4,
+  },
+  customEmailInput: {
+    flex: 1,
+    color: '#ffffff',
+    fontSize: 14,
+    height: '100%',
+  },
+  customEmailSubmit: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#818cf8',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

@@ -4,7 +4,7 @@
  * online presence updates, and session state tracking.
  */
 
-import { signInAnonymously, signOut, onAuthStateChanged } from 'firebase/auth';
+import { signInAnonymously, signOut, onAuthStateChanged, signInWithCredential, GoogleAuthProvider } from 'firebase/auth';
 import { auth } from './firebase';
 import { uploadFile } from './storageService';
 import apiClient from '../config/api';
@@ -34,6 +34,77 @@ export async function loginWithGoogle(googleUser) {
       },
     };
   } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Signs in with a real Google account using native SDK and Firebase.
+ * Dynamically imports GoogleSignin to prevent bundle/runtime crash in standard Expo Go environments.
+ * 
+ * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+ */
+export async function loginWithRealGoogle() {
+  try {
+    let GoogleSignin;
+    try {
+      GoogleSignin = require('@react-native-google-signin/google-signin/lib/module/signIn/GoogleSignin').GoogleSignin;
+    } catch (e) {
+      throw new Error('Google Sign-In is only supported on a native development build. Please build the native app binary first.');
+    }
+
+    // Dynamically retrieve Web Client ID from downloaded google-services.json
+    let webClientId = undefined;
+    try {
+      const googleServices = require('../../google-services.json');
+      const clients = googleServices?.client || [];
+      for (const client of clients) {
+        const oauthClients = client?.oauth_client || [];
+        const webClient = oauthClients.find(oc => oc.client_type === 3);
+        if (webClient && webClient.client_id) {
+          webClientId = webClient.client_id;
+          break;
+        }
+      }
+    } catch (err) {
+      console.warn('[GoogleSignin] Could not parse google-services.json for webClientId. Using config fallback.');
+    }
+
+    if (!webClientId) {
+      throw new Error('Web Client ID not found. Make sure you enabled Google Sign-In in Firebase Console and replaced google-services.json.');
+    }
+
+    GoogleSignin.configure({
+      webClientId,
+      offlineAccess: true,
+    });
+
+    await GoogleSignin.hasPlayServices();
+    const signInResult = await GoogleSignin.signIn();
+    
+    // Support both new and old Google Sign-In SDK return formats
+    const idToken = signInResult.data?.idToken || signInResult.idToken;
+    if (!idToken) {
+      throw new Error('Google Sign-In returned no ID Token.');
+    }
+
+    // Authenticate with Firebase using Google credentials
+    const credential = GoogleAuthProvider.credential(idToken);
+    const firebaseResult = await signInWithCredential(auth, credential);
+    const user = firebaseResult.user;
+
+    return {
+      success: true,
+      data: {
+        uid: user.uid,
+        displayName: user.displayName || user.email?.split('@')[0] || 'VibeSpace User',
+        email: user.email,
+        photoURL: user.photoURL,
+        phoneNumber: user.phoneNumber || null,
+      },
+    };
+  } catch (error) {
+    console.error('Real Google Sign-In error:', error);
     return { success: false, error: error.message };
   }
 }
@@ -236,6 +307,35 @@ export async function getUserFollowing(userId) {
 export async function getRecommendedUsers() {
   try {
     const response = await apiClient.get('/users/recommended');
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Fetches user profile data from MongoDB by email.
+ * @param {string} email - User's email address.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function getUserProfileByEmail(email) {
+  try {
+    const cleanEmail = encodeURIComponent(email.trim().toLowerCase());
+    const response = await apiClient.get(`/users/email/${cleanEmail}`);
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.response?.data?.error || error.message };
+  }
+}
+
+/**
+ * Syncs the existing MongoDB profile for an email to a new Firebase UID.
+ * @param {string} email - User's email address.
+ * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+ */
+export async function syncProfileUid(email) {
+  try {
+    const response = await apiClient.post('/users/sync-uid', { email });
     return response.data;
   } catch (error) {
     return { success: false, error: error.response?.data?.error || error.message };

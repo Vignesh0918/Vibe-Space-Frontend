@@ -7,7 +7,243 @@
 
 import { auth } from './firebase';
 import { uploadVoiceMessage, uploadFile, deleteFile } from './storageService';
-import apiClient from '../config/api';
+import apiClient, { API_URL } from '../config/api';
+
+// --- WebSocket Client Integration ---
+let ws = null;
+let isWsAuthenticated = false;
+let reconnectTimer = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_DELAY_BASE = 2000;
+
+const messageListeners = new Map(); // chatId -> Set of callbacks
+const userChatsListeners = new Set(); // Set of callbacks
+
+const activeMessagesCache = new Map(); // chatId -> Array of messages
+let userChatsCache = [];
+let currentUserIdForChats = null;
+
+function getWebSocketUrl() {
+  const base = API_URL;
+  return base.replace(/^http/, 'ws');
+}
+
+function connectWebSocket() {
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+    return;
+  }
+
+  const url = getWebSocketUrl();
+  console.log('[WS Client] Connecting to:', url);
+
+  try {
+    ws = new WebSocket(url);
+  } catch (err) {
+    console.warn('[WS Client] WebSocket construction failed:', err);
+    scheduleReconnect();
+    return;
+  }
+
+  ws.onopen = () => {
+    console.log('[WS Client] WebSocket connected. Authenticating...');
+    reconnectAttempts = 0;
+    sendWsAuth();
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      handleWSMessage(data);
+    } catch (err) {
+      console.warn('[WS Client] Failed parsing socket message:', err);
+    }
+  };
+
+  ws.onclose = (event) => {
+    console.log(`[WS Client] Connection closed: code=${event.code}, reason=${event.reason}`);
+    isWsAuthenticated = false;
+    scheduleReconnect();
+  };
+
+  ws.onerror = (err) => {
+    console.warn('[WS Client] WebSocket error:', err.message || err);
+  };
+}
+
+async function sendWsAuth() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+  const currentUser = auth.currentUser;
+  if (!currentUser) return;
+
+  try {
+    let token;
+    try {
+      token = await currentUser.getIdToken();
+    } catch {
+      token = currentUser.uid;
+    }
+
+    ws.send(JSON.stringify({
+      type: 'auth',
+      token
+    }));
+  } catch (error) {
+    console.warn('[WS Client] Token retrieval failed:', error);
+  }
+}
+
+function scheduleReconnect() {
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    console.warn('[WS Client] Maximum reconnect attempts reached.');
+    return;
+  }
+
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+
+  const delay = Math.min(30000, RECONNECT_DELAY_BASE * Math.pow(2, reconnectAttempts));
+  reconnectAttempts++;
+
+  reconnectTimer = setTimeout(() => {
+    connectWebSocket();
+  }, delay);
+}
+
+function sendJoinRoom(chatId) {
+  if (ws && ws.readyState === WebSocket.OPEN && isWsAuthenticated) {
+    ws.send(JSON.stringify({
+      type: 'join',
+      chatId
+    }));
+  }
+}
+
+function sendLeaveRoom(chatId) {
+  if (ws && ws.readyState === WebSocket.OPEN && isWsAuthenticated) {
+    ws.send(JSON.stringify({
+      type: 'leave',
+      chatId
+    }));
+  }
+}
+
+function handleWSMessage(data) {
+  switch (data.type) {
+    case 'authenticated':
+      if (data.success) {
+        console.log('[WS Client] WebSocket authenticated.');
+        isWsAuthenticated = true;
+        // Join room if already listening
+        if (messageListeners.size > 0) {
+          Array.from(messageListeners.keys()).forEach(sendJoinRoom);
+        }
+      } else {
+        console.warn('[WS Client] WebSocket authentication rejected:', data.error);
+        isWsAuthenticated = false;
+      }
+      break;
+
+    case 'new_message': {
+      const { chatId, message } = data;
+      const mappedMsg = {
+        ...message,
+        id: message._id || message.id
+      };
+
+      if (activeMessagesCache.has(chatId)) {
+        const list = activeMessagesCache.get(chatId);
+        if (!list.some(m => m.id === mappedMsg.id)) {
+          const updated = [...list, mappedMsg];
+          activeMessagesCache.set(chatId, updated);
+          triggerMessageCallbacks(chatId, updated);
+        }
+      }
+      triggerUserChatsUpdate();
+      break;
+    }
+
+    case 'edit_message': {
+      const { chatId, message } = data;
+      const mappedMsg = {
+        ...message,
+        id: message._id || message.id
+      };
+      if (activeMessagesCache.has(chatId)) {
+        const list = activeMessagesCache.get(chatId);
+        const updated = list.map(m => m.id === mappedMsg.id ? mappedMsg : m);
+        activeMessagesCache.set(chatId, updated);
+        triggerMessageCallbacks(chatId, updated);
+      }
+      break;
+    }
+
+    case 'delete_message': {
+      const { chatId, messageId } = data;
+      if (activeMessagesCache.has(chatId)) {
+        const list = activeMessagesCache.get(chatId);
+        const updated = list.filter(m => m.id !== messageId && m._id !== messageId);
+        activeMessagesCache.set(chatId, updated);
+        triggerMessageCallbacks(chatId, updated);
+      }
+      break;
+    }
+
+    case 'react_message': {
+      const { chatId, messageId, reactions } = data;
+      if (activeMessagesCache.has(chatId)) {
+        const list = activeMessagesCache.get(chatId);
+        const updated = list.map(m => {
+          if (m.id === messageId || m._id === messageId) {
+            return { ...m, reactions };
+          }
+          return m;
+        });
+        activeMessagesCache.set(chatId, updated);
+        triggerMessageCallbacks(chatId, updated);
+      }
+      break;
+    }
+
+    default:
+      break;
+  }
+}
+
+function triggerMessageCallbacks(chatId, messages) {
+  const callbacks = messageListeners.get(chatId);
+  if (callbacks) {
+    callbacks.forEach(cb => cb(messages));
+  }
+}
+
+async function triggerUserChatsUpdate() {
+  if (userChatsListeners.size === 0) return;
+  if (!currentUserIdForChats) return;
+
+  try {
+    const res = await getUserChats(currentUserIdForChats);
+    if (res.success) {
+      userChatsCache = res.data || [];
+      userChatsListeners.forEach(cb => cb(userChatsCache));
+    }
+  } catch (err) {
+    console.warn('[WS Client] Failed to refresh user chats list:', err);
+  }
+}
+
+// Track user authentication lifecycle to open/close socket
+auth.onAuthStateChanged((user) => {
+  if (user) {
+    connectWebSocket();
+  } else {
+    if (ws) {
+      ws.close(1000, 'User logged out');
+      ws = null;
+    }
+    isWsAuthenticated = false;
+  }
+});
 
 /**
  * Maps MongoDB chat/message documents to frontend models.
@@ -117,11 +353,13 @@ export async function sendMessage(chatId, senderId, text, mediaUrl = '', mediaTy
  * @returns {function} Unsubscribe function.
  */
 export function listenToMessages(chatId, callback) {
-  let active = true;
-  let intervalId = null;
-  let previousDataJson = '';
+  // Ensure WebSocket is connected
+  connectWebSocket();
 
-  const check = async () => {
+  let active = true;
+  let fallbackInterval = null;
+
+  const fetchHttp = async () => {
     try {
       const response = await apiClient.get(`/chats/${chatId}/messages`);
       if (response.data.success && active) {
@@ -129,25 +367,47 @@ export function listenToMessages(chatId, callback) {
           ...msg,
           id: msg._id || msg.id
         }));
-
-        const currentDataJson = JSON.stringify(messages);
-        if (currentDataJson !== previousDataJson) {
-          previousDataJson = currentDataJson;
-          callback(messages);
-        }
+        activeMessagesCache.set(chatId, messages);
+        callback(messages);
       }
     } catch (err) {
-      console.warn('Error polling chat messages:', err);
+      console.warn('Error fetching messages (fallback):', err);
     }
   };
 
-  check();
-  // Poll every 3 seconds for messages for immediate feedback in active chat
-  intervalId = setInterval(check, 3000);
+  // Perform initial fetch
+  fetchHttp();
+
+  // Register listener callback
+  if (!messageListeners.has(chatId)) {
+    messageListeners.set(chatId, new Set());
+  }
+  messageListeners.get(chatId).add(callback);
+
+  // Send WebSocket join room request
+  sendJoinRoom(chatId);
+
+  // Set up safe HTTP polling fallback if WebSocket disconnects
+  fallbackInterval = setInterval(() => {
+    if (!ws || ws.readyState !== WebSocket.OPEN || !isWsAuthenticated) {
+      console.log('[WS Client] WS not active. Executing fallback HTTP poll...');
+      fetchHttp();
+    }
+  }, 5000);
 
   return () => {
     active = false;
-    if (intervalId) clearInterval(intervalId);
+    if (fallbackInterval) clearInterval(fallbackInterval);
+
+    const callbacks = messageListeners.get(chatId);
+    if (callbacks) {
+      callbacks.delete(callback);
+      if (callbacks.size === 0) {
+        messageListeners.delete(chatId);
+        activeMessagesCache.delete(chatId);
+        sendLeaveRoom(chatId);
+      }
+    }
   };
 }
 
@@ -175,32 +435,39 @@ export async function getUserChats(userId) {
  * @returns {function} Unsubscribe function.
  */
 export function listenToUserChats(userId, callback) {
-  let active = true;
-  let intervalId = null;
-  let previousDataJson = '';
+  currentUserIdForChats = userId;
+  connectWebSocket();
 
-  const check = async () => {
+  let active = true;
+  let fallbackInterval = null;
+
+  const fetchHttp = async () => {
     try {
       const res = await getUserChats(userId);
       if (res.success && active) {
-        const chats = res.data || [];
-        const currentDataJson = JSON.stringify(chats);
-        if (currentDataJson !== previousDataJson) {
-          previousDataJson = currentDataJson;
-          callback(chats);
-        }
+        userChatsCache = res.data || [];
+        callback(userChatsCache);
       }
     } catch (err) {
-      console.warn('Error polling user chats:', err);
+      console.warn('Error fetching user chats (fallback):', err);
     }
   };
 
-  check();
-  intervalId = setInterval(check, 4000);
+  fetchHttp();
+
+  userChatsListeners.add(callback);
+
+  // Set up safe HTTP polling fallback if WebSocket disconnects
+  fallbackInterval = setInterval(() => {
+    if (!ws || ws.readyState !== WebSocket.OPEN || !isWsAuthenticated) {
+      fetchHttp();
+    }
+  }, 6000);
 
   return () => {
     active = false;
-    if (intervalId) clearInterval(intervalId);
+    if (fallbackInterval) clearInterval(fallbackInterval);
+    userChatsListeners.delete(callback);
   };
 }
 
