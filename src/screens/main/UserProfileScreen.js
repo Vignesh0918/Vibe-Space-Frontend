@@ -36,6 +36,7 @@ import { getUserProfile, followUser, unfollowUser } from '../../services/authSer
 import { getOrCreateDMChat } from '../../services/chatService';
 import apiClient from '../../config/api';
 import { setUser } from '../../store/slices/authSlice';
+import Toast from 'react-native-toast-message';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_ITEM_SIZE = (SCREEN_WIDTH - 36) / 3; // 12 padding left/right, plus grid gaps
@@ -75,7 +76,11 @@ export default function UserProfileScreen() {
         const followersList = profRes.data.followers || [];
         setIsFollowing(followersList.includes(currentUserId));
       } else {
-        Alert.alert('Error', profRes.error || 'Could not load user profile.');
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: profRes.error || 'Could not load user profile.'
+        });
         navigation.goBack();
         return;
       }
@@ -138,11 +143,19 @@ export default function UserProfileScreen() {
         // Revert
         setIsFollowing(originallyFollowing);
         fetchProfileData(); // reload
-        Alert.alert('Error', res.error || 'Action failed.');
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: res.error || 'Action failed.'
+        });
       }
     } catch (err) {
       setIsFollowing(originallyFollowing);
-      Alert.alert('Error', err.message);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: err.message
+      });
     } finally {
       setIsActionLoading(false);
     }
@@ -159,10 +172,18 @@ export default function UserProfileScreen() {
           chatName: profile.displayName || profile.username || 'Chat'
         });
       } else {
-        Alert.alert('Chat Error', res.error || 'Could not start DM.');
+        Toast.show({
+          type: 'error',
+          text1: 'Chat Error',
+          text2: res.error || 'Could not start DM.'
+        });
       }
     } catch (error) {
-      Alert.alert('Error', error.message);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error.message
+      });
     } finally {
       setIsActionLoading(false);
     }
@@ -181,7 +202,11 @@ export default function UserProfileScreen() {
       
       <TouchableOpacity 
         style={styles.headerButton}
-        onPress={() => Alert.alert('Options', 'Block or Report User')}
+        onPress={() => Toast.show({
+          type: 'info',
+          text1: 'Options',
+          text2: 'Block or Report User actions coming soon.'
+        })}
       >
         <Ionicons name="ellipsis-vertical" size={22} color="#ffffff" />
       </TouchableOpacity>

@@ -29,6 +29,7 @@ import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
 import { SCREENS } from '../../constants';
 import { getUserFollowing, followUser, unfollowUser } from '../../services/authService';
 import { setUser } from '../../store/slices/authSlice';
+import Toast from 'react-native-toast-message';
 
 export default function FollowingScreen() {
   const navigation = useNavigation();
@@ -61,7 +62,11 @@ export default function FollowingScreen() {
         setFollowingList(res.data || []);
         setFilteredFollowing(res.data || []);
       } else {
-        Alert.alert('Error', res.error || 'Failed to load following list.');
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: res.error || 'Failed to load following list.'
+        });
       }
     } catch (err) {
       console.warn('Error loading following list:', err);
@@ -123,10 +128,18 @@ export default function FollowingScreen() {
           setFollowingList(prev => prev.filter(user => (user.uid || user._id) !== targetId));
         }
       } else {
-        Alert.alert('Error', res.error || 'Action failed.');
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: res.error || 'Action failed.'
+        });
       }
     } catch (error) {
-      Alert.alert('Error', error.message);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error.message
+      });
     } finally {
       setActionUserId(null);
     }

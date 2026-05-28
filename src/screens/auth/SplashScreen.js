@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Animated, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, Animated, Dimensions, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/theme';
@@ -73,6 +73,7 @@ export default function SplashScreen() {
 
           {/* Branding Texts */}
           <Text style={styles.title}>VibeSpace</Text>
+
           <Text style={styles.subtitle}>Join the cosmic circle.</Text>
         </View>
       </LinearGradient>

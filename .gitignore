@@ -43,3 +43,9 @@ yarn-error.*
 # environment variables
 .env
 
+app.json
+google-services.json
+package-lock.json
+package.json
+yarn.lock
+

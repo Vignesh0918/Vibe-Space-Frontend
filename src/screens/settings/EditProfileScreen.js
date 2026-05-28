@@ -18,9 +18,9 @@ import {
   Platform, 
   ScrollView, 
   ActivityIndicator,
-  Alert,
   StatusBar
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
@@ -119,7 +119,7 @@ export default function EditProfileScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Permission to access camera roll is required to select an avatar!');
+        Toast.show({ type: 'error', text1: 'Permission Required', text2: 'Permission to access camera roll is required to select an avatar!' });
         return;
       }
 
@@ -134,18 +134,18 @@ export default function EditProfileScreen() {
         setAvatarUri(result.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert('Error', `Error picking image: ${error.message}`);
+      Toast.show({ type: 'error', text1: 'Error', text2: `Error picking image: ${error.message}` });
     }
   };
 
   const handleSaveChanges = async () => {
     if (!displayName.trim()) {
-      Alert.alert('Missing Info', 'Please enter your name.');
+      Toast.show({ type: 'error', text1: 'Missing Info', text2: 'Please enter your name.' });
       return;
     }
 
     if (!usernameStatus.available && username.trim().toLowerCase() !== (currentUser?.username ? currentUser.username.replace('@', '').toLowerCase() : '')) {
-      Alert.alert('Unavailable Username', 'Please choose a valid and available username.');
+      Toast.show({ type: 'error', text1: 'Unavailable Username', text2: 'Please choose a valid and available username.' });
       return;
     }
 
@@ -174,16 +174,15 @@ export default function EditProfileScreen() {
         }));
         
         setIsSaving(false);
-        Alert.alert('Success', 'Profile updated successfully!', [
-          { text: 'OK', onPress: () => navigation.goBack() }
-        ]);
+        Toast.show({ type: 'success', text1: 'Success', text2: 'Profile updated successfully!' });
+        setTimeout(() => navigation.goBack(), 1000);
       } else {
         setIsSaving(false);
-        Alert.alert('Error', result.error || 'Failed to save changes. Please try again.');
+        Toast.show({ type: 'error', text1: 'Error', text2: result.error || 'Failed to save changes. Please try again.' });
       }
     } catch (error) {
       setIsSaving(false);
-      Alert.alert('Error', error.message || 'Something went wrong while saving.');
+      Toast.show({ type: 'error', text1: 'Error', text2: error.message || 'Something went wrong while saving.' });
     }
   };
 

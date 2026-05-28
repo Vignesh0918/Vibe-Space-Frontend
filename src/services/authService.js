@@ -229,6 +229,38 @@ export async function logout() {
       await updateOnlineStatus(currentUser.uid, false);
     }
     await signOut(auth);
+
+    // Also sign out from native Google Sign-In if available
+    try {
+      const GoogleSignin = require('@react-native-google-signin/google-signin/lib/module/signIn/GoogleSignin').GoogleSignin;
+      if (GoogleSignin) {
+        let webClientId = undefined;
+        try {
+          const googleServices = require('../../google-services.json');
+          const clients = googleServices?.client || [];
+          for (const client of clients) {
+            const oauthClients = client?.oauth_client || [];
+            const webClient = oauthClients.find(oc => oc.client_type === 3);
+            if (webClient && webClient.client_id) {
+              webClientId = webClient.client_id;
+              break;
+            }
+          }
+        } catch (err) {
+          // ignore
+        }
+        if (webClientId) {
+          GoogleSignin.configure({
+            webClientId,
+            offlineAccess: true,
+          });
+        }
+        await GoogleSignin.signOut();
+      }
+    } catch (googleError) {
+      console.log('Google Sign-out skipped or failed (probably not in native environment):', googleError);
+    }
+
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };

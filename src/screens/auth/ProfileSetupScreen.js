@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useDispatch } from 'react-redux';
 import { useRoute } from '@react-navigation/native';
@@ -71,7 +72,11 @@ export default function ProfileSetupScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Permission to access camera roll is required to select an avatar!');
+        Toast.show({
+          type: 'error',
+          text1: 'Permission Required',
+          text2: 'Permission to access camera roll is required to select an avatar!'
+        });
         return;
       }
 
@@ -86,17 +91,29 @@ export default function ProfileSetupScreen() {
         setAvatarUri(result.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert('Error', `Error picking image: ${error.message}`);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: `Error picking image: ${error.message}`
+      });
     }
   };
 
   const handleCompleteSetup = async () => {
     if (!fullName.trim()) {
-      Alert.alert('Missing Info', 'Please enter your full name.');
+      Toast.show({
+        type: 'error',
+        text1: 'Missing Info',
+        text2: 'Please enter your full name.'
+      });
       return;
     }
     if (username.trim().length < 3) {
-      Alert.alert('Invalid Username', 'Username must be at least 3 characters.');
+      Toast.show({
+        type: 'error',
+        text1: 'Invalid Username',
+        text2: 'Username must be at least 3 characters.'
+      });
       return;
     }
 
@@ -118,7 +135,11 @@ export default function ProfileSetupScreen() {
         
         if (!result.success) {
           setIsSubmitting(false);
-          Alert.alert('Registration Failed', result.error || 'Could not create your profile. Please try again.');
+          Toast.show({
+            type: 'error',
+            text1: 'Registration Failed',
+            text2: result.error || 'Could not create your profile. Please try again.'
+          });
           return;
         }
 
@@ -147,7 +168,11 @@ export default function ProfileSetupScreen() {
       }
     } catch (error) {
       setIsSubmitting(false);
-      Alert.alert('Error', error.message || 'Something went wrong. Please try again.');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error.message || 'Something went wrong. Please try again.'
+      });
     }
   };
 
@@ -342,6 +367,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#818cf8',
     letterSpacing: 0.5,
+  },
+  headerLogoImage: {
+    width: 80,
+    height: 40,
   },
   flex: {
     flex: 1,

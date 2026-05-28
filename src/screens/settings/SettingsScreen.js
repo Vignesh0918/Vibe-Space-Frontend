@@ -21,11 +21,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
 import { SCREENS } from '../../constants';
+import Toast from 'react-native-toast-message';
+import { useDispatch } from 'react-redux';
+import { logoutThunk } from '../../store/slices/authSlice';
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-
+  const dispatch = useDispatch();
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>
@@ -63,7 +66,11 @@ export default function SettingsScreen() {
           <TouchableOpacity 
             activeOpacity={0.8}
             style={styles.optionCard}
-            onPress={() => Alert.alert('Account & Privacy', 'Open account details setup.')}
+            onPress={() => Toast.show({
+              type: 'info',
+              text1: 'Account & Privacy',
+              text2: 'Open account details setup.'
+            })}
           >
             <View style={styles.optionLeft}>
               <View style={[styles.iconCircle, { backgroundColor: 'rgba(79, 110, 247, 0.15)' }]}>
@@ -96,7 +103,11 @@ export default function SettingsScreen() {
           <TouchableOpacity 
             activeOpacity={0.8}
             style={styles.optionCard}
-            onPress={() => Alert.alert('Circle Permissions', 'Manage circles entry access policies.')}
+            onPress={() => Toast.show({
+              type: 'info',
+              text1: 'Circle Permissions',
+              text2: 'Manage circles entry access policies.'
+            })}
           >
             <View style={styles.optionLeft}>
               <View style={[styles.iconCircle, { backgroundColor: 'rgba(236, 72, 153, 0.15)' }]}>
@@ -146,7 +157,20 @@ export default function SettingsScreen() {
         <TouchableOpacity 
           activeOpacity={0.8}
           style={styles.logoutButton}
-          onPress={() => Alert.alert('Logout', 'Logging out from VibeSpace...')}
+          onPress={() => Alert.alert(
+            'Logout',
+            'Are you sure you want to logout from VibeSpace?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Logout', 
+                style: 'destructive', 
+                onPress: () => {
+                  dispatch(logoutThunk());
+                }
+              }
+            ]
+          )}
         >
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>

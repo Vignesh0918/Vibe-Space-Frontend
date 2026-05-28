@@ -34,6 +34,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS, SHADOWS } from '../../constants/theme';
 import { getStoryViewers, markStoryViewed } from '../../services/storyService';
+import { Audio } from 'expo-av';
+import SongOverlay from '../../components/story/SongOverlay';
+import { getOrCreateDMChat, sendMessage } from '../../services/chatService';
+import { createNotification } from '../../services/notificationService';
+import Toast from 'react-native-toast-message';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const STORY_DURATION = 6000; // ms per story slide
@@ -47,7 +52,7 @@ const STORIES_DATA = [
   {
     user: {
       name: 'Aaryan_Vibes',
-      avatar: require('../../../assets/aarav_avatar.png'),
+      avatar: require('../../../assets/default_avatar.png'),
     },
     slides: [
       {
@@ -56,6 +61,12 @@ const STORIES_DATA = [
         time: '2h ago',
         location: 'Mumbai',
         trending: true,
+        song: {
+          title: 'Starboy',
+          artist: 'The Weeknd',
+          artwork: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=100',
+          previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/07/7e/8a/077e8a9b-734e-0a56-8c8c-1e6bb69c0d48/mzaf_8496468752251141738.plus.aac.p.m4a'
+        }
       },
       {
         id: 's2',
@@ -66,7 +77,7 @@ const STORIES_DATA = [
       },
       {
         id: 's3',
-        image: require('../../../assets/post_workstation.png'),
+        image: require('../../../assets/concert_image.png'),
         time: '45m ago',
         location: 'Mumbai',
         trending: true,
@@ -92,7 +103,7 @@ export default function StoryViewerScreen() {
     story = {
       user: {
         name: params.storyUser || 'You',
-        avatar: params.storyAvatar || require('../../../assets/aarav_avatar.png'),
+        avatar: params.storyAvatar || require('../../../assets/default_avatar.png'),
       },
       slides: params.allStories.map((s, index) => {
         let formattedTime = 'Just now';
@@ -116,6 +127,9 @@ export default function StoryViewerScreen() {
           time: formattedTime,
           location: s.location || 'Circles',
           trending: s.trending || false,
+          userId: s.userId,
+          circleId: s.circleId,
+          song: s.song,
         };
       })
     };
@@ -123,7 +137,7 @@ export default function StoryViewerScreen() {
     story = {
       user: {
         name: params.storyUser || 'You',
-        avatar: params.storyAvatar || require('../../../assets/aarav_avatar.png'),
+        avatar: params.storyAvatar || require('../../../assets/default_avatar.png'),
       },
       slides: [
         {
@@ -131,7 +145,9 @@ export default function StoryViewerScreen() {
           image: typeof params.storyMediaUrl === 'string' ? { uri: params.storyMediaUrl } : params.storyMediaUrl,
           time: 'Just now',
           location: 'Mumbai',
-          trending: false
+          trending: false,
+          userId: params.storyUserId,
+          song: params.storySong || null,
         }
       ]
     };
@@ -144,9 +160,116 @@ export default function StoryViewerScreen() {
   const [isPaused, setIsPaused] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [viewerCount, setViewerCount] = useState(0);
+  const [likedSlides, setLikedSlides] = useState({});
+  const [isPlayingSong, setIsPlayingSong] = useState(false);
 
   const slide = story.slides[slideIndex];
+  const isCurrentSlideLiked = likedSlides[slide?.id] || false;
   const totalSlides = story.slides.length;
+
+  const soundRef = useRef(null);
+
+  const stopAndUnloadSound = async () => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.stopAsync().catch(() => {});
+        await soundRef.current.unloadAsync().catch(() => {});
+        soundRef.current = null;
+      }
+      setIsPlayingSong(false);
+    } catch (e) {
+      console.warn('Error unloading story sound:', e);
+    }
+  };
+
+  // Stop audio when user navigates away from StoryViewerScreen
+  useEffect(() => {
+    const unsubBlur = navigation.addListener('blur', () => {
+      stopAndUnloadSound();
+    });
+    return () => {
+      unsubBlur();
+      // Also cleanup on full unmount
+      stopAndUnloadSound();
+    };
+  }, [navigation]);
+
+  // Automatically play song ONLY for the current slide (if it has a song)
+  useEffect(() => {
+    let active = true;
+
+    const playCurrentSong = async () => {
+      // 1. Always stop/unload any previously running sound first
+      await stopAndUnloadSound();
+
+      if (!active) return;
+
+      // 2. Only play if the CURRENT slide has a song with a valid previewUrl
+      const currentSlide = story.slides[slideIndex];
+      if (!currentSlide?.song?.previewUrl) {
+        // No song on this slide — ensure everything is silent
+        return;
+      }
+
+      try {
+        setIsPlayingSong(true);
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: currentSlide.song.previewUrl },
+          { shouldPlay: true },
+          (status) => {
+            if (status.didJustFinish) {
+              stopAndUnloadSound();
+            }
+          }
+        );
+        if (active) {
+          soundRef.current = sound;
+        } else {
+          // User navigated away quickly — clean up immediately
+          await sound.stopAsync().catch(() => {});
+          await sound.unloadAsync().catch(() => {});
+        }
+      } catch (error) {
+        console.warn('Story automatic audio play failed:', error);
+        if (active) {
+          setIsPlayingSong(false);
+        }
+      }
+    };
+
+    playCurrentSong();
+
+    return () => {
+      active = false;
+      stopAndUnloadSound();
+    };
+  }, [slideIndex]);
+
+  const handleToggleSongPreview = async () => {
+    if (!slide.song || !slide.song.previewUrl) return;
+
+    try {
+      if (isPlayingSong) {
+        await stopAndUnloadSound();
+        return;
+      }
+
+      setIsPlayingSong(true);
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: slide.song.previewUrl },
+        { shouldPlay: true },
+        (status) => {
+          if (status.didJustFinish) {
+            stopAndUnloadSound();
+          }
+        }
+      );
+      soundRef.current = sound;
+    } catch (error) {
+      console.warn('Story preview audio play failed:', error);
+      stopAndUnloadSound();
+    }
+  };
 
   // Animated progress for current bar
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -206,6 +329,8 @@ export default function StoryViewerScreen() {
     if (slideIndex < totalSlides - 1) {
       setSlideIndex((prev) => prev + 1);
     } else {
+      // Explicitly stop audio before leaving the viewer
+      stopAndUnloadSound();
       navigation.goBack();
     }
   };
@@ -232,6 +357,104 @@ export default function StoryViewerScreen() {
 
   const handleLongPressOut = () => {
     setIsPaused(false);
+  };
+
+  const handleLikeStory = async () => {
+    if (isCurrentSlideLiked) return;
+
+    const slideId = slide?.id;
+    setLikedSlides(prev => ({ ...prev, [slideId]: true }));
+
+    if (params.isOwnStory) {
+      Toast.show({
+        type: 'success',
+        text1: 'Liked own story! ❤️',
+        text2: 'Vibe updated.'
+      });
+      return;
+    }
+
+    const targetUserId = slide.userId || story.userId || params.storyUserId;
+    if (!targetUserId) return;
+
+    try {
+      await createNotification({
+        userId: targetUserId,
+        type: 'reaction',
+        senderId: currentUser.uid,
+        senderName: currentUser.displayName || currentUser.username,
+        senderAvatar: currentUser.photoURL || '',
+        text: 'reacted ❤️ to your story',
+        postImage: (slide.image && typeof slide.image === 'object' && slide.image.uri) ? slide.image.uri : '',
+      });
+
+      Toast.show({
+        type: 'success',
+        text1: 'Vibe Sent! ❤️',
+        text2: 'Story liked successfully.'
+      });
+    } catch (err) {
+      console.warn('Failed to like story:', err);
+    }
+  };
+
+  const handleSendReply = async () => {
+    if (!replyText.trim()) return;
+    if (params.isOwnStory) return;
+
+    const targetUserId = slide.userId || story.userId || params.storyUserId;
+    if (!targetUserId) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Story owner not found.'
+      });
+      return;
+    }
+
+    const currentText = replyText.trim();
+    setReplyText('');
+
+    try {
+      // 1. Get/create DM chat room
+      const chatRes = await getOrCreateDMChat(currentUser.uid, targetUserId);
+      if (chatRes.success && chatRes.data) {
+        const chatId = chatRes.data.id;
+        
+        // 2. Send message in chat room
+        const msgText = `Replied to your story: "${currentText}"`;
+        const msgRes = await sendMessage(chatId, currentUser.uid, msgText, '', '');
+        
+        if (msgRes.success) {
+          // 3. Create a notification to draw immediate attention
+          await createNotification({
+            userId: targetUserId,
+            type: 'comment',
+            senderId: currentUser.uid,
+            senderName: currentUser.displayName || currentUser.username,
+            senderAvatar: currentUser.photoURL || '',
+            text: `replied to your story: "${currentText}"`,
+            postImage: (slide.image && typeof slide.image === 'object' && slide.image.uri) ? slide.image.uri : '',
+          }).catch(err => console.warn('Notification fallback failed:', err));
+
+          Toast.show({
+            type: 'success',
+            text1: 'Reply Sent! 💬',
+            text2: 'Your reply was sent as a direct message.'
+          });
+        } else {
+          throw new Error(msgRes.error || 'Failed to send message.');
+        }
+      } else {
+        throw new Error(chatRes.error || 'Failed to open DM room.');
+      }
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: err.message || 'Failed to send reply'
+      });
+    }
   };
 
   /* ---------- Progress Bars ---------- */
@@ -293,7 +516,7 @@ export default function StoryViewerScreen() {
       </View>
 
       <TouchableOpacity
-        onPress={() => navigation.goBack()}
+        onPress={() => { stopAndUnloadSound(); navigation.goBack(); }}
         style={styles.closeBtn}
       >
         <Ionicons name="close" size={26} color="#ffffff" />
@@ -304,7 +527,17 @@ export default function StoryViewerScreen() {
   /* ---------- Bottom Bar ---------- */
 
   const renderBottomBar = () => (
-    <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
+    <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]} pointerEvents="box-none">
+      {slide.song && (
+        <View style={{ marginBottom: 12 }} pointerEvents="box-none">
+          <SongOverlay
+            song={slide.song}
+            isPlaying={isPlayingSong}
+            onPress={handleToggleSongPreview}
+          />
+        </View>
+      )}
+ 
       {/* Viewers count badge (only on own stories) */}
       {params.isOwnStory && viewerCount > 0 && (
         <View style={styles.viewersBadge}>
@@ -337,14 +570,27 @@ export default function StoryViewerScreen() {
               if (animRef.current) animRef.current.stop();
             }}
             onBlur={() => setIsPaused(false)}
+            onSubmitEditing={handleSendReply}
           />
         </View>
 
-        <TouchableOpacity style={styles.heartBtn} activeOpacity={0.7}>
-          <Ionicons name="heart-outline" size={24} color="#ffffff" />
+        <TouchableOpacity 
+          style={styles.heartBtn} 
+          activeOpacity={0.7}
+          onPress={handleLikeStory}
+        >
+          <Ionicons 
+            name={isCurrentSlideLiked ? "heart" : "heart-outline"} 
+            size={24} 
+            color={isCurrentSlideLiked ? (COLORS.danger || "#ef4444") : "#ffffff"} 
+          />
         </TouchableOpacity>
 
-        <TouchableOpacity activeOpacity={0.8} style={styles.sendOuter}>
+        <TouchableOpacity 
+          activeOpacity={0.8} 
+          style={styles.sendOuter}
+          onPress={handleSendReply}
+        >
           <LinearGradient
             colors={['#8b5cf6', '#4f6ef7']}
             start={{ x: 0, y: 0 }}

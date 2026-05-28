@@ -31,10 +31,13 @@ import {
   Alert,
   ActivityIndicator
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { useSelector } from 'react-redux';
 import * as ImagePicker from 'expo-image-picker';
 import { createPost } from '../../services/postService';
 import { getUserCircles, createDefaultCircles } from '../../services/circleService';
+import { generateAICaption } from '../../services/aiService';
+import * as FileSystem from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -50,6 +53,9 @@ const GALLERY_IMAGES = [
   require('../../../assets/post_workstation.png'),
   require('../../../assets/media__1779348639761.png'),
   require('../../../assets/media__1779348907328.png'),
+  require('../../../assets/media__1779349699782.png'),
+  require('../../../assets/media__1779349908803.png'),
+  require('../../../assets/media__1779350518027.png'),
   require('../../../assets/media__1779350622091.png'),
 ];
 
@@ -67,6 +73,9 @@ const PRESET_IMAGE_URLS = [
   'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800', // post_workstation.png
   'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=800', // media__1779348639761.png
   'https://images.unsplash.com/photo-1533158326339-7f3cf2404354?w=800', // media__1779348907328.png
+  'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=800', // media__1779349699782.png
+  'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=800', // media__1779349908803.png
+  'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=800', // media__1779350518027.png
   'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800', // media__1779350622091.png
 ];
 
@@ -80,11 +89,15 @@ export default function AddPostScreen() {
   const [selectedImage, setSelectedImage] = useState(GALLERY_IMAGES[0]);
   const [vibeText, setVibeText] = useState('');
   const [selectedCircle, setSelectedCircle] = useState('friends');
-  const [songText, setSongText] = useState('Add a Song');
+  const [songText, setSongText] = useState('');
   const [isFlashOn, setIsFlashOn] = useState(false);
   const [isTimerActive, setIsTimerActive] = useState(false);
   const [cameraFacingFront, setCameraFacingFront] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
+
+  // AI Caption State
+  const [isAILoading, setIsAILoading] = useState(false);
+  const [aiCaptions, setAiCaptions] = useState(null); // { caption, hashtags, mood, alt_captions }
 
   const circles = [
     { id: 'friends', label: 'Friends', icon: 'people-outline', color: COLORS.circles.friends || '#10b981' },
@@ -128,11 +141,11 @@ export default function AddPostScreen() {
       const libraryPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (useCamera && cameraPerm.status !== 'granted') {
-        Alert.alert('Permission Denied', 'Camera permission is required!');
+        Toast.show({ type: 'error', text1: 'Permission Denied', text2: 'Camera permission is required!' });
         return;
       }
       if (!useCamera && libraryPerm.status !== 'granted') {
-        Alert.alert('Permission Denied', 'Gallery permission is required!');
+        Toast.show({ type: 'error', text1: 'Permission Denied', text2: 'Gallery permission is required!' });
         return;
       }
 
@@ -155,7 +168,7 @@ export default function AddPostScreen() {
       }
     } catch (error) {
       console.error('Error picking image for post:', error);
-      Alert.alert('Error', 'Failed to pick image');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to pick image' });
     }
   };
 
@@ -200,7 +213,7 @@ export default function AddPostScreen() {
       }
 
       if (!resolvedCircleId) {
-        Alert.alert('Error', 'Could not resolve the selected circle. Please try again.');
+        Toast.show({ type: 'error', text1: 'Error', text2: 'Could not resolve the selected circle. Please try again.' });
         setIsPosting(false);
         return;
       }
@@ -225,29 +238,100 @@ export default function AddPostScreen() {
         circleId: resolvedCircleId,
         userName,
         userAvatar,
-        userId
+        userId,
       };
-
+ 
       const response = await createPost(postPayload);
       if (response.success) {
-        Alert.alert('Success', 'Post shared successfully!');
+        Toast.show({ type: 'success', text1: 'Success', text2: 'Post shared successfully!' });
+        setVibeText('');
+        setSelectedImage(GALLERY_IMAGES[0]);
+        setAiCaptions(null);
+        setSongText('');
         navigation.navigate(SCREENS.HOME_TAB, { screen: SCREENS.HOME });
       } else {
-        Alert.alert('Error', response.error || 'Failed to share post');
+        Toast.show({ type: 'error', text1: 'Error', text2: response.error || 'Failed to share post' });
       }
     } catch (error) {
       console.error('Failed to create post:', error);
-      Alert.alert('Error', error.message || 'An unexpected error occurred');
+      Toast.show({ type: 'error', text1: 'Error', text2: error.message || 'An unexpected error occurred' });
     } finally {
       setIsPosting(false);
     }
   };
 
   const handleAddSong = () => {
-    if (songText === 'Add a Song') {
-      setSongText('🎵 Neon Nights - Lofi Beat 🎵');
+    if (songText) {
+      setSongText('');
     } else {
-      setSongText('Add a Song');
+      setSongText('Lo-Fi Chill Beats');
+    }
+  };
+
+  // ✨ AI Caption Generator
+  const handleGenerateAICaption = async () => {
+    if (isAILoading) return;
+    setIsAILoading(true);
+    setAiCaptions(null);
+    try {
+      let base64Data = '';
+      let mimeType = 'image/jpeg';
+      let localUri = '';
+
+      if (typeof selectedImage === 'number') {
+        const assetModule = Image.resolveAssetSource(selectedImage);
+        if (assetModule?.uri) {
+          localUri = assetModule.uri;
+        }
+      } else if (selectedImage?.uri) {
+        localUri = selectedImage.uri;
+      }
+
+      if (localUri) {
+        if (localUri.startsWith('http://') || localUri.startsWith('https://')) {
+          try {
+            const filename = localUri.split('/').pop()?.split('?')[0] || 'temp_asset.png';
+            const tempFile = `${FileSystem.cacheDirectory}${filename}`;
+            const downloadResult = await FileSystem.downloadAsync(localUri, tempFile).catch(() => null);
+            if (downloadResult) {
+              localUri = downloadResult.uri;
+            }
+          } catch (dlErr) {
+            console.warn('Failed to download remote asset:', dlErr);
+          }
+        }
+
+        const fileInfo = await FileSystem.getInfoAsync(localUri).catch(() => null);
+        if (fileInfo?.exists) {
+          base64Data = await FileSystem.readAsStringAsync(localUri, { encoding: FileSystem.EncodingType.Base64 });
+          const ext = localUri.split('.').pop()?.toLowerCase();
+          if (ext === 'png') mimeType = 'image/png';
+          else if (ext === 'webp') mimeType = 'image/webp';
+        }
+      }
+
+      if (!base64Data) {
+        Toast.show({ type: 'error', text1: 'Error', text2: 'Could not read the selected image.' });
+        setIsAILoading(false);
+        return;
+      }
+
+      const circleType = circles.find(c => c.id === selectedCircle)?.label || 'Friends';
+      const result = await generateAICaption(base64Data, mimeType, circleType);
+
+      if (result.success && result.data) {
+        setAiCaptions(result.data);
+        // Auto-fill the first suggestion
+        const hashtagStr = result.data.hashtags ? ' ' + result.data.hashtags.join(' ') : '';
+        setVibeText(result.data.caption + hashtagStr);
+      } else {
+        Toast.show({ type: 'error', text1: 'AI Error', text2: result.error || 'Failed to generate caption.' });
+      }
+    } catch (error) {
+      console.error('AI Caption error:', error);
+      Toast.show({ type: 'error', text1: 'Error', text2: error.message || 'Something went wrong generating the caption.' });
+    } finally {
+      setIsAILoading(false);
     }
   };
 
@@ -335,20 +419,23 @@ export default function AddPostScreen() {
             style={{ flex: 1 }}
             contentContainerStyle={styles.scrollBody}
           >
-            {/* Song Pill */}
+            {/* Song Pill / Overlay */}
             <TouchableOpacity 
               activeOpacity={0.8}
               onPress={handleAddSong}
               style={styles.songPill}
             >
               <Ionicons name="musical-notes-outline" size={16} color="#8b5cf6" style={{ marginRight: 6 }} />
-              <Text style={styles.songPillText}>{songText}</Text>
+              <Text style={styles.songPillText}>{songText || 'Add a Song'}</Text>
             </TouchableOpacity>
 
             {/* Frosted Details Card */}
             <View style={styles.frostedCard}>
               <View style={styles.inputRow}>
-                <Image source={require('../../../assets/aarav_avatar.png')} style={styles.userAvatar} />
+                <Image 
+                  source={currentUser?.photoURL ? { uri: currentUser.photoURL } : require('../../../assets/default_avatar.png')} 
+                  style={styles.userAvatar} 
+                />
                 <TextInput
                   placeholder="What's the vibe?"
                   placeholderTextColor="rgba(255,255,255,0.4)"
@@ -357,7 +444,42 @@ export default function AddPostScreen() {
                   value={vibeText}
                   onChangeText={setVibeText}
                 />
+                {/* AI Caption Button */}
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={handleGenerateAICaption}
+                  disabled={isAILoading}
+                  style={styles.aiCaptionBtn}
+                >
+                  {isAILoading ? (
+                    <ActivityIndicator size="small" color="#a78bfa" />
+                  ) : (
+                    <>
+                      <Ionicons name="sparkles" size={16} color="#a78bfa" />
+                      <Text style={styles.aiCaptionBtnText}>AI Caption</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               </View>
+
+              {/* AI Caption Suggestions */}
+              {aiCaptions && aiCaptions.alt_captions && aiCaptions.alt_captions.length > 0 && (
+                <View style={styles.aiSuggestionsContainer}>
+                  <Text style={styles.aiSuggestionsTitle}>✨ More suggestions:</Text>
+                  {aiCaptions.alt_captions.map((alt, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={styles.aiSuggestionPill}
+                      onPress={() => {
+                        const hashtagStr = aiCaptions.hashtags ? ' ' + aiCaptions.hashtags.join(' ') : '';
+                        setVibeText(alt + hashtagStr);
+                      }}
+                    >
+                      <Text style={styles.aiSuggestionText} numberOfLines={2}>{alt}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
               {/* Presets/Hashtags Row */}
               <ScrollView 
@@ -457,6 +579,8 @@ export default function AddPostScreen() {
           </View>
         </View>
       </ImageBackground>
+ 
+      {/* Song picker removed */}
     </KeyboardAvoidingView>
   );
 }
@@ -557,7 +681,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: height * 0.1, // float in middle-upper
     marginBottom: 20,
-    backdropFilter: 'blur(10px)',
   },
   songPillText: {
     color: '#ffffff',
@@ -572,7 +695,6 @@ const styles = StyleSheet.create({
     marginHorizontal: SIZES.spacingMd || 16,
     padding: 16,
     marginBottom: 16,
-    backdropFilter: 'blur(15px)',
   },
   inputRow: {
     flexDirection: 'row',
@@ -611,6 +733,51 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12,
     ...FONTS.medium,
+  },
+  aiCaptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.3)',
+    marginLeft: 8,
+    minWidth: 100,
+    justifyContent: 'center',
+  },
+  aiCaptionBtnText: {
+    color: '#a78bfa',
+    fontSize: 12,
+    ...FONTS.bold,
+    marginLeft: 4,
+  },
+  aiSuggestionsContainer: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(167, 139, 250, 0.12)',
+  },
+  aiSuggestionsTitle: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 11,
+    ...FONTS.medium,
+    marginBottom: 6,
+  },
+  aiSuggestionPill: {
+    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.15)',
+  },
+  aiSuggestionText: {
+    color: '#e0d4ff',
+    fontSize: 12,
+    ...FONTS.regular,
   },
   circleSelectorPanel: {
     marginHorizontal: SIZES.spacingMd || 16,

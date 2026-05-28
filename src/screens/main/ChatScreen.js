@@ -23,6 +23,7 @@ import {
   Modal,
   Clipboard,
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,6 +44,7 @@ import {
 } from '../../services/chatService';
 import ChatBubble from '../../components/chat/ChatBubble';
 import ExpiryBadge from '../../components/chat/ExpiryBadge';
+import { getSmartReplies } from '../../services/aiService';
 
 const { width } = Dimensions.get('window');
 
@@ -70,6 +72,11 @@ export default function ChatScreen() {
   const [isActionModalVisible, setIsActionModalVisible] = useState(false);
   const [isEditingMode, setIsEditingMode] = useState(false);
   const [editText, setEditText] = useState('');
+
+  // Smart Reply Suggestions
+  const [smartReplies, setSmartReplies] = useState([]);
+  const [isLoadingReplies, setIsLoadingReplies] = useState(false);
+  const smartReplyTimerRef = useRef(null);
 
   // Fetch chat room details
   useEffect(() => {
@@ -112,6 +119,37 @@ export default function ChatScreen() {
     }
   }, [messages]);
 
+  // Fetch smart reply suggestions when a new message arrives from someone else
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    // Only suggest if the last message is not from us
+    if (!lastMsg || lastMsg.senderId === currentUserId) return;
+    if (!lastMsg.text || lastMsg.text.trim().length === 0) return;
+
+    // Debounce to avoid rapid calls
+    if (smartReplyTimerRef.current) clearTimeout(smartReplyTimerRef.current);
+    smartReplyTimerRef.current = setTimeout(async () => {
+      setIsLoadingReplies(true);
+      try {
+        const senderName = chatDetails?.participantDetails?.find(p => p.uid === lastMsg.senderId)?.displayName || chatName;
+        const isGroup = chatDetails?.isGroup || false;
+        const res = await getSmartReplies(lastMsg.text, senderName, isGroup);
+        if (res.success && res.data?.replies) {
+          setSmartReplies(res.data.replies);
+        }
+      } catch (err) {
+        console.warn('Smart reply fetch failed:', err);
+      } finally {
+        setIsLoadingReplies(false);
+      }
+    }, 800);
+
+    return () => {
+      if (smartReplyTimerRef.current) clearTimeout(smartReplyTimerRef.current);
+    };
+  }, [messages.length]);
+
   const handleSendText = async () => {
     if (!inputText.trim()) return;
     const textToSend = inputText;
@@ -121,11 +159,11 @@ export default function ChatScreen() {
     try {
       const res = await sendMessage(chatId, currentUserId, textToSend, '', '');
       if (!res.success) {
-        Alert.alert('Send Error', res.error || 'Failed to send message.');
+        Toast.show({ type: 'error', text1: 'Send Error', text2: res.error || 'Failed to send message.' });
         setInputText(textToSend); // recover
       }
     } catch (err) {
-      Alert.alert('Send Error', err.message);
+      Toast.show({ type: 'error', text1: 'Send Error', text2: err.message });
       setInputText(textToSend);
     } finally {
       setIsSending(false);
@@ -142,7 +180,7 @@ export default function ChatScreen() {
       }
 
       if (permissionResult.status !== 'granted') {
-        Alert.alert('Permission Denied', 'Camera / Gallery permissions are required to share photos.');
+        Toast.show({ type: 'error', text1: 'Permission Denied', text2: 'Camera / Gallery permissions are required to share photos.' });
         return;
       }
 
@@ -156,12 +194,12 @@ export default function ChatScreen() {
         const res = await sendMessage(chatId, currentUserId, '', selectedUri, 'image');
         setIsSending(false);
         if (!res.success) {
-          Alert.alert('Upload Error', res.error || 'Failed to send photo.');
+          Toast.show({ type: 'error', text1: 'Upload Error', text2: res.error || 'Failed to send photo.' });
         }
       }
     } catch (err) {
       setIsSending(false);
-      Alert.alert('Error', err.message);
+      Toast.show({ type: 'error', text1: 'Error', text2: err.message });
     }
   };
 
@@ -182,7 +220,7 @@ export default function ChatScreen() {
     try {
       const perm = await Audio.requestPermissionsAsync();
       if (perm.status !== 'granted') {
-        Alert.alert('Microphone Permission', 'Microphone access is needed for voice notes.');
+        Toast.show({ type: 'error', text1: 'Microphone Permission', text2: 'Microphone access is needed for voice notes.' });
         return;
       }
 
@@ -214,7 +252,7 @@ export default function ChatScreen() {
         const res = await sendMessage(chatId, currentUserId, '', uri, 'voice');
         setIsSending(false);
         if (!res.success) {
-          Alert.alert('Send Error', res.error || 'Failed to send voice message.');
+          Toast.show({ type: 'error', text1: 'Send Error', text2: res.error || 'Failed to send voice message.' });
         }
       }
     } catch (err) {
@@ -260,10 +298,10 @@ export default function ChatScreen() {
     try {
       const res = await editMessage(chatId, msgId, editText.trim());
       if (!res.success) {
-        Alert.alert('Edit Error', res.error || 'Failed to edit message.');
+        Toast.show({ type: 'error', text1: 'Edit Error', text2: res.error || 'Failed to edit message.' });
       }
     } catch (err) {
-      Alert.alert('Edit Error', err.message);
+      Toast.show({ type: 'error', text1: 'Edit Error', text2: err.message });
     }
   };
 
@@ -284,10 +322,10 @@ export default function ChatScreen() {
             try {
               const res = await deleteMessage(chatId, msgId);
               if (!res.success) {
-                Alert.alert('Delete Error', res.error || 'Failed to delete message.');
+                Toast.show({ type: 'error', text1: 'Delete Error', text2: res.error || 'Failed to delete message.' });
               }
             } catch (err) {
-              Alert.alert('Delete Error', err.message);
+              Toast.show({ type: 'error', text1: 'Delete Error', text2: err.message });
             }
           } 
         }
@@ -339,10 +377,10 @@ export default function ChatScreen() {
         </View>
 
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.headerIcon} onPress={() => Alert.alert('Voice Call', 'Simulating call setup.')}>
+          <TouchableOpacity style={styles.headerIcon} onPress={() => Toast.show({ type: 'info', text1: 'Voice Call', text2: 'Simulating call setup.' })}>
             <Ionicons name="call-outline" size={20} color="#ffffff" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIcon} onPress={() => Alert.alert('Video Call', 'Simulating video call setup.')}>
+          <TouchableOpacity style={styles.headerIcon} onPress={() => Toast.show({ type: 'info', text1: 'Video Call', text2: 'Simulating video call setup.' })}>
             <Ionicons name="videocam-outline" size={22} color="#ffffff" />
           </TouchableOpacity>
         </View>
@@ -398,6 +436,27 @@ export default function ChatScreen() {
             </View>
           }
         />
+
+        {/* Smart Reply Suggestions */}
+        {smartReplies.length > 0 && inputText.length === 0 && (
+          <View style={styles.smartReplyContainer}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.smartReplyScroll}>
+              {smartReplies.map((reply, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={styles.smartReplyPill}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setInputText(reply.text);
+                    setSmartReplies([]);
+                  }}
+                >
+                  <Text style={styles.smartReplyText}>{reply.text}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Input Bar */}
         <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
@@ -718,6 +777,31 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+
+  /* Smart Reply Suggestions */
+  smartReplyContainer: {
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(76, 40, 133, 0.2)',
+    backgroundColor: COLORS.background,
+  },
+  smartReplyScroll: {
+    paddingHorizontal: 12,
+  },
+  smartReplyPill: {
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    borderRadius: 18,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.25)',
+  },
+  smartReplyText: {
+    color: '#e0d4ff',
+    fontSize: 13,
+    ...FONTS.medium,
   },
 
   /* Action Modal Sheet */

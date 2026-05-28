@@ -22,9 +22,9 @@ import {
   TextInput,
   Image,
   StatusBar,
-  Alert,
   ActivityIndicator
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { useDispatch, useSelector } from 'react-redux';
 import { createCircleThunk } from '../../store/slices/circleSlice';
 import * as circleService from '../../services/circleService';
@@ -59,9 +59,9 @@ const THEMES = [
 ];
 
 const FRIENDS = [
-  { id: 'f1', name: 'Arjun K.', avatar: require('../../../assets/arjun_avatar.png') },
-  { id: 'f2', name: 'Priya S.', avatar: require('../../../assets/priya_avatar.png') },
-  { id: 'f3', name: 'Rohan M.', avatar: require('../../../assets/aarav_avatar.png') },
+  { id: 'f1', name: 'Arjun K.', avatar: require('../../../assets/default_avatar.png') },
+  { id: 'f2', name: 'Priya S.', avatar: require('../../../assets/default_avatar.png') },
+  { id: 'f3', name: 'Rohan M.', avatar: require('../../../assets/default_avatar.png') },
 ];
 
 export default function CreateCircleScreen() {
@@ -87,7 +87,7 @@ export default function CreateCircleScreen() {
 
   const handleCreateCircle = async () => {
     if (!circleName.trim()) {
-      Alert.alert('Error', 'Please enter a circle name');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please enter a circle name' });
       return;
     }
     
@@ -115,16 +115,15 @@ export default function CreateCircleScreen() {
           }
         }
         
-        Alert.alert('Success', `Circle "${circleName}" created successfully!`, [
-          { text: 'OK', onPress: () => navigation.goBack() }
-        ]);
+        Toast.show({ type: 'success', text1: 'Success', text2: `Circle "${circleName}" created successfully!` });
+        setTimeout(() => navigation.goBack(), 1000);
       } else {
         const errorMsg = action.payload || 'Failed to create circle';
-        Alert.alert('Error', errorMsg);
+        Toast.show({ type: 'error', text1: 'Error', text2: errorMsg });
       }
     } catch (error) {
       console.error('Error creating circle:', error);
-      Alert.alert('Error', error.message || 'An unexpected error occurred');
+      Toast.show({ type: 'error', text1: 'Error', text2: error.message || 'An unexpected error occurred' });
     } finally {
       setIsCreating(false);
     }

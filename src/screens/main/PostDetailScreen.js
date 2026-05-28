@@ -26,6 +26,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import Toast from 'react-native-toast-message';
 
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
 import { auth } from '../../services/firebase';
@@ -34,7 +35,8 @@ import {
   getComments, 
   addComment, 
   toggleReaction, 
-  bookmarkPost 
+  bookmarkPost,
+  deletePost
 } from '../../services/postService';
 import PostCard from '../../components/feed/PostCard';
 
@@ -66,7 +68,11 @@ export default function PostDetailScreen() {
       if (res.success) {
         setPost(res.data);
       } else {
-        Alert.alert('Error', res.error || 'Failed to load post details.');
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: res.error || 'Failed to load post details.'
+        });
       }
     } catch (err) {
       console.warn('Failed to load post details:', err);
@@ -165,11 +171,19 @@ export default function PostDetailScreen() {
         fetchComments();
         fetchPostDetails();
       } else {
-        Alert.alert('Error', res.error || 'Failed to submit comment.');
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: res.error || 'Failed to submit comment.'
+        });
         setInputText(text); // restore input
       }
     } catch (err) {
-      Alert.alert('Error', err.message);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: err.message
+      });
       setInputText(text);
     } finally {
       setIsSubmittingComment(false);
@@ -181,6 +195,86 @@ export default function PostDetailScreen() {
     setSelectedReactionEmoji(emoji);
     setSelectedReactionUsers(userList || []);
     setIsReactionsModalVisible(true);
+  };
+
+  const handlePostOptions = (postItem) => {
+    const isOwner = postItem.userId === currentUserId;
+    if (isOwner) {
+      Alert.alert(
+        'Post Options',
+        'What would you like to do with this post?',
+        [
+          {
+            text: 'Delete Post',
+            style: 'destructive',
+            onPress: () => confirmDeletePost()
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          }
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Post Options',
+        'What would you like to do with this post?',
+        [
+          {
+            text: 'Report Post',
+            onPress: () => Toast.show({ type: 'success', text1: 'Reported', text2: 'Thank you for reporting this post.' })
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          }
+        ]
+      );
+    }
+  };
+
+  const confirmDeletePost = () => {
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => executeDeletePost()
+        }
+      ]
+    );
+  };
+
+  const executeDeletePost = async () => {
+    try {
+      const deleteRes = await deletePost(postId);
+      if (deleteRes.success) {
+        Toast.show({
+          type: 'success',
+          text1: 'Deleted',
+          text2: 'Post deleted successfully!'
+        });
+        navigation.goBack();
+      } else {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: deleteRes.error || 'Failed to delete post.'
+        });
+      }
+    } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error.message || 'An unexpected error occurred.'
+      });
+    }
   };
 
   const formatCommentTime = (dateStr) => {
@@ -200,7 +294,7 @@ export default function PostDetailScreen() {
   const renderComment = ({ item }) => (
     <View style={styles.commentRow}>
       <Image 
-        source={item.userAvatar ? { uri: item.userAvatar } : require('../../../assets/aarav_avatar.png')} 
+        source={item.userAvatar ? { uri: item.userAvatar } : require('../../../assets/default_avatar.png')} 
         style={styles.commentAvatar} 
       />
       <View style={styles.commentBubble}>
@@ -247,6 +341,7 @@ export default function PostDetailScreen() {
                   currentUserId={currentUserId}
                   onReact={handleReact}
                   onBookmark={handleBookmark}
+                  onOptions={handlePostOptions}
                 />
                 
                 {/* Visual grid representation of all active reaction counts */}

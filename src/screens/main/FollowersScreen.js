@@ -29,6 +29,7 @@ import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
 import { SCREENS } from '../../constants';
 import { getUserFollowers, followUser, unfollowUser } from '../../services/authService';
 import { setUser } from '../../store/slices/authSlice';
+import Toast from 'react-native-toast-message';
 
 export default function FollowersScreen() {
   const navigation = useNavigation();
@@ -61,7 +62,11 @@ export default function FollowersScreen() {
         setFollowers(res.data || []);
         setFilteredFollowers(res.data || []);
       } else {
-        Alert.alert('Error', res.error || 'Failed to load followers.');
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: res.error || 'Failed to load followers.'
+        });
       }
     } catch (err) {
       console.warn('Error loading followers:', err);
@@ -117,10 +122,18 @@ export default function FollowersScreen() {
           following: nextFollowing
         }));
       } else {
-        Alert.alert('Error', res.error || 'Follow action failed.');
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: res.error || 'Follow action failed.'
+        });
       }
     } catch (error) {
-      Alert.alert('Error', error.message);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error.message
+      });
     } finally {
       setActionUserId(null);
     }

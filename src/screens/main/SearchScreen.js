@@ -11,13 +11,13 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  ScrollView, 
-  TouchableOpacity, 
-  Image, 
+import {
+  StyleSheet,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Image,
   TextInput,
   Dimensions,
   StatusBar,
@@ -28,6 +28,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
@@ -39,6 +40,7 @@ import { setUser } from '../../store/slices/authSlice';
 import * as authService from '../../services/authService';
 import * as postService from '../../services/postService';
 import * as circleService from '../../services/circleService';
+import { suggestVibeTitles } from '../../services/aiService';
 
 
 const { width } = Dimensions.get('window');
@@ -64,6 +66,10 @@ export default function SearchScreen() {
 
   const [followingIds, setFollowingIds] = useState([]);
   const [joinedCircleIds, setJoinedCircleIds] = useState([]);
+
+  // AI Vibe Title Suggester
+  const [vibeTitles, setVibeTitles] = useState([]);
+  const [isVibeTitlesLoading, setIsVibeTitlesLoading] = useState(false);
 
   // Fetch dashboard initial stats & lists
   useEffect(() => {
@@ -132,7 +138,7 @@ export default function SearchScreen() {
       setFollowingIds(nextFollowing);
       await authService.followUser(targetUserId);
     }
-    
+
     // Sync Redux state
     dispatch(setUser({
       ...currentUser,
@@ -154,22 +160,49 @@ export default function SearchScreen() {
     const res = await circleService.addMemberToCircle(circleId, currentUser.uid);
     if (!res.success) {
       setJoinedCircleIds(prev => prev.filter(id => id !== circleId));
-      Alert.alert('Error', res.error || 'Failed to join circle.');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: res.error || 'Failed to join circle.'
+      });
+    }
+  };
+
+  const getTimeOfDay = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Morning';
+    if (hour < 17) return 'Afternoon';
+    if (hour < 21) return 'Evening';
+    return 'Night';
+  };
+
+  const handleSuggestVibeTitles = async () => {
+    setIsVibeTitlesLoading(true);
+    setVibeTitles([]);
+    try {
+      const res = await suggestVibeTitles('🔥', 'Unknown', getTimeOfDay(), []);
+      if (res.success && res.data?.suggestions) {
+        setVibeTitles(res.data.suggestions);
+      }
+    } catch (err) {
+      console.warn('Vibe title suggestion failed:', err);
+    } finally {
+      setIsVibeTitlesLoading(false);
     }
   };
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.headerButton}
         onPress={() => setIsDrawerOpen(true)}
       >
         <Ionicons name="menu" size={28} color="#ffffff" />
       </TouchableOpacity>
-      
+
       <Text style={styles.headerTitle}>VibeSpace</Text>
-      
-      <TouchableOpacity 
+
+      <TouchableOpacity
         style={styles.headerButton}
         onPress={() => navigation.navigate(SCREENS.HOME_TAB, { screen: SCREENS.NOTIFICATIONS })}
       >
@@ -235,13 +268,13 @@ export default function SearchScreen() {
               const isFollowing = followingIds.includes(user.id);
               return (
                 <View key={user.id} style={styles.userResultRow}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.userInfoBtn}
                     onPress={() => navigation.navigate(SCREENS.USER_PROFILE, { userId: user.id })}
                   >
-                    <Image 
-                      source={user.photoURL ? { uri: user.photoURL } : require('../../../assets/aarav_avatar.png')} 
-                      style={styles.resultAvatar} 
+                    <Image
+                      source={user.photoURL ? { uri: user.photoURL } : require('../../../assets/default_avatar.png')}
+                      style={styles.resultAvatar}
                     />
                     <View style={styles.resultInfoCol}>
                       <Text style={styles.resultNameText}>{user.displayName}</Text>
@@ -250,7 +283,7 @@ export default function SearchScreen() {
                   </TouchableOpacity>
 
                   {user.id !== currentUser?.uid && (
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={[styles.followBtn, isFollowing && styles.followingBtnActive]}
                       onPress={() => handleFollowToggle(user.id)}
                     >
@@ -273,13 +306,13 @@ export default function SearchScreen() {
               const isMember = joinedCircleIds.includes(circle.id);
               return (
                 <View key={circle.id} style={styles.userResultRow}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.userInfoBtn}
                     onPress={() => navigation.navigate(SCREENS.CIRCLE_DETAIL, { circleId: circle.id, circleName: circle.name })}
                   >
-                    <Image 
-                      source={circle.avatar ? { uri: circle.avatar } : require('../../../assets/cosmic_wave.png')} 
-                      style={styles.circleResultAvatar} 
+                    <Image
+                      source={circle.avatar ? { uri: circle.avatar } : require('../../../assets/cosmic_wave.png')}
+                      style={styles.circleResultAvatar}
                     />
                     <View style={styles.resultInfoCol}>
                       <Text style={styles.resultNameText}>{circle.name}</Text>
@@ -287,7 +320,7 @@ export default function SearchScreen() {
                     </View>
                   </TouchableOpacity>
 
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.followBtn, isMember && styles.followingBtnActive]}
                     onPress={() => !isMember && handleJoinCircle(circle.id)}
                     disabled={isMember}
@@ -309,9 +342,9 @@ export default function SearchScreen() {
             {vibes.map((vibe) => (
               <View key={vibe.id} style={styles.vibeCardItem}>
                 <View style={styles.vibeHeaderRow}>
-                  <Image 
-                    source={vibe.userAvatar ? { uri: vibe.userAvatar } : require('../../../assets/aarav_avatar.png')} 
-                    style={styles.vibeUserAvatar} 
+                  <Image
+                    source={vibe.userAvatar ? { uri: vibe.userAvatar } : require('../../../assets/default_avatar.png')}
+                    style={styles.vibeUserAvatar}
                   />
                   <View style={styles.vibeInfoCol}>
                     <Text style={styles.vibeName}>{vibe.userName}</Text>
@@ -335,8 +368,8 @@ export default function SearchScreen() {
           <View style={styles.resultsSection}>
             <Text style={styles.resultsSectionTitle}>Posts</Text>
             {posts.map((post) => (
-              <PostCard 
-                key={post.id} 
+              <PostCard
+                key={post.id}
                 post={post}
                 onReact={(emoji) => postService.toggleReaction(post.id, emoji, currentUser?.uid, currentUser?.displayName, currentUser?.photoURL)}
                 onBookmark={() => postService.bookmarkPost(post.id)}
@@ -349,7 +382,7 @@ export default function SearchScreen() {
   };
 
   const renderDashboard = () => (
-    <ScrollView 
+    <ScrollView
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.scrollContainer}
     >
@@ -362,16 +395,16 @@ export default function SearchScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView 
-          horizontal 
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.horizontalScroll}
         >
           {recommendedUsers.length > 0 ? (
             recommendedUsers.map((item) => (
-              <TouchableOpacity 
-                key={item.id || item._id} 
-                style={styles.personCard} 
+              <TouchableOpacity
+                key={item.id || item._id}
+                style={styles.personCard}
                 activeOpacity={0.8}
                 onPress={() => navigation.navigate(SCREENS.USER_PROFILE, { userId: item.id || item._id })}
               >
@@ -381,21 +414,21 @@ export default function SearchScreen() {
                     style={styles.avatarGradientBorder}
                   >
                     <View style={styles.avatarInnerContainer}>
-                      <Image 
-                        source={item.photoURL ? { uri: item.photoURL } : require('../../../assets/aarav_avatar.png')} 
-                        style={styles.personAvatar} 
+                      <Image
+                        source={item.photoURL ? { uri: item.photoURL } : require('../../../assets/default_avatar.png')}
+                        style={styles.personAvatar}
                       />
                     </View>
                   </LinearGradient>
-                  
-                  <TouchableOpacity 
+
+                  <TouchableOpacity
                     style={[styles.plusIconBadge, followingIds.includes(item.id || item._id) && styles.plusIconBadgeActive]}
                     onPress={() => handleFollowToggle(item.id || item._id)}
                   >
-                    <Ionicons 
-                      name={followingIds.includes(item.id || item._id) ? "checkmark" : "add"} 
-                      size={14} 
-                      color="#ffffff" 
+                    <Ionicons
+                      name={followingIds.includes(item.id || item._id) ? "checkmark" : "add"}
+                      size={14}
+                      color="#ffffff"
                     />
                   </TouchableOpacity>
                 </View>
@@ -413,9 +446,9 @@ export default function SearchScreen() {
       {/* Trending Vibes */}
       <View style={styles.sectionContainer}>
         <Text style={[styles.sectionTitle, { marginHorizontal: 16, marginBottom: 16 }]}>Trending Vibes</Text>
-        
-        <ScrollView 
-          horizontal 
+
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
           snapToInterval={TRENDING_CARD_WIDTH + 16}
           decelerationRate="fast"
@@ -428,19 +461,19 @@ export default function SearchScreen() {
               const totalReactions = Object.values(post.reactions || {}).reduce((acc, curr) => acc + curr.length, 0);
 
               return (
-                <TouchableOpacity 
-                  key={post.id} 
-                  style={styles.trendingCardTouch} 
+                <TouchableOpacity
+                  key={post.id}
+                  style={styles.trendingCardTouch}
                   activeOpacity={0.95}
                   onPress={() => navigation.navigate(SCREENS.POST_DETAIL, { postId: post.id })}
                 >
-                  <Image 
-                    source={post.imageURL ? { uri: post.imageURL } : require('../../../assets/post_swirl.png')} 
-                    style={styles.trendingImage} 
+                  <Image
+                    source={post.imageURL ? { uri: post.imageURL } : require('../../../assets/concert_image.png')}
+                    style={styles.trendingImage}
                   />
-                  
+
                   <LinearGradient
-                    colors={['rgba(26,5,51,0.1)', 'rgba(26,5,51,0.9)'] }
+                    colors={['rgba(26,5,51,0.1)', 'rgba(26,5,51,0.9)']}
                     style={styles.trendingGradient}
                   >
                     <View style={styles.trendingTagRow}>
@@ -477,14 +510,78 @@ export default function SearchScreen() {
         </ScrollView>
       </View>
 
+      {/* Nearby Vibes Section */ }
+      <View style={styles.sectionContainer}>
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>Nearby Vibes</Text>
+      <TouchableOpacity onPress={handleSuggestVibeTitles}>
+        <View style={styles.aiVibeTitleBtn}>
+          {isVibeTitlesLoading ? (
+            <ActivityIndicator size="small" color="#a78bfa" />
+          ) : (
+            <>
+              <Ionicons name="sparkles" size={14} color="#a78bfa" />
+              <Text style={styles.aiVibeTitleBtnText}>AI Titles</Text>
+            </>
+          )}
+        </View>
+      </TouchableOpacity>
+    </View>
 
-    </ScrollView>
+    {/* AI-Generated Vibe Title Suggestions */}
+    {vibeTitles.length > 0 && (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.vibeTagsScroll}
+      >
+        {vibeTitles.map((title, idx) => (
+          <TouchableOpacity
+            key={idx}
+            style={styles.vibeTitleChip}
+            onPress={() => Toast.show({
+              type: 'info',
+              text1: 'Vibe Selected',
+              text2: `"${title}" — Start this vibe nearby!`
+            })}
+          >
+            <Ionicons name="location" size={14} color="#a78bfa" style={{ marginRight: 6 }} />
+            <Text style={styles.vibeTitleChipText}>{title}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    )}
+
+    {/* Nearby Vibes Placeholder Map */}
+    <View style={styles.nearbyVibesCard}>
+      <LinearGradient
+        colors={['rgba(139, 92, 246, 0.15)', 'rgba(79, 110, 247, 0.1)']}
+        style={styles.nearbyVibesGradient}
+      >
+        <Ionicons name="location-outline" size={48} color="rgba(167, 139, 250, 0.3)" />
+        <Text style={styles.nearbyVibesTitle}>Discover vibes around you</Text>
+        <Text style={styles.nearbyVibesSubtitle}>Tap AI Titles above to generate creative vibe names</Text>
+        <TouchableOpacity style={styles.exploreBtn} onPress={handleSuggestVibeTitles}>
+          <LinearGradient
+            colors={['#a78bfa', '#60a5fa']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.exploreBtnGradient}
+          >
+            <Text style={styles.exploreBtnText}>EXPLORE</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </LinearGradient>
+    </View>
+  </View>
+
+    </ScrollView >
   );
 
   return (
     <View style={[
-      styles.container, 
-      { 
+      styles.container,
+      {
         paddingTop: insets.top,
         paddingBottom: insets.bottom + 80 // offset for navigation tabbar
       }
@@ -513,7 +610,7 @@ export default function SearchScreen() {
       {searchQuery.trim().length > 0 ? (
         <View style={{ flex: 1 }}>
           {renderCategoryTabs()}
-          <ScrollView 
+          <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContainer}
           >
@@ -551,6 +648,10 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(139, 92, 246, 0.4)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 6,
+  },
+  headerLogoImage: {
+    width: 80,
+    height: 40,
   },
   headerButton: {
     padding: 4,
@@ -921,5 +1022,84 @@ const styles = StyleSheet.create({
     color: '#b0a2c7',
     fontSize: 13,
     ...FONTS.medium,
-  }
+  },
+
+  /* Nearby Vibes & AI Title Suggester */
+  aiVibeTitleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    borderRadius: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.25)',
+  },
+  aiVibeTitleBtnText: {
+    color: '#a78bfa',
+    fontSize: 11,
+    ...FONTS.bold,
+    marginLeft: 4,
+  },
+  vibeTagsScroll: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  vibeTitleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    borderRadius: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.2)',
+  },
+  vibeTitleChipText: {
+    color: '#e0d4ff',
+    fontSize: 13,
+    ...FONTS.medium,
+  },
+  nearbyVibesCard: {
+    marginHorizontal: 16,
+    borderRadius: SIZES.radiusLg || 16,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: 'rgba(167, 139, 250, 0.15)',
+  },
+  nearbyVibesGradient: {
+    padding: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nearbyVibesTitle: {
+    fontSize: 16,
+    ...FONTS.bold,
+    color: '#ffffff',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  nearbyVibesSubtitle: {
+    fontSize: 12,
+    color: COLORS.textMuted || '#a78bfa',
+    ...FONTS.regular,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  exploreBtn: {
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  exploreBtnGradient: {
+    paddingVertical: 10,
+    paddingHorizontal: 28,
+    borderRadius: 20,
+  },
+  exploreBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    ...FONTS.bold,
+    letterSpacing: 1,
+  },
 });

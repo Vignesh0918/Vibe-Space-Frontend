@@ -141,7 +141,7 @@ export default function SideDrawer({ isOpen, onClose }) {
   const rawVibe = currentUser?.vibe || 'glow';
   
   // Resolve avatar photo source
-  let avatarSource = require('../../../assets/aarav_avatar.png'); // Default Aarav Avatar
+  let avatarSource = require('../../../assets/default_avatar.png'); // Default Avatar
   if (currentUser?.photoURL) {
     avatarSource = typeof currentUser.photoURL === 'string' 
       ? { uri: currentUser.photoURL } 

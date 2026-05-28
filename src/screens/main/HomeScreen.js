@@ -24,13 +24,16 @@ import {
   ActivityIndicator,
   Animated,
   Modal,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  ImageBackground
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSelector } from 'react-redux';
+import SongPickerModal from '../../components/story/SongPickerModal';
+import SongOverlay from '../../components/story/SongOverlay';
 import { createStory, getCircleStories } from '../../services/storyService';
 import { getUserCircles, createDefaultCircles } from '../../services/circleService';
-import { getHomeFeed } from '../../services/postService';
+import { getHomeFeed, deletePost } from '../../services/postService';
 import formatTime from '../../utils/formatTime';
 import EmptyState from '../../components/common/EmptyState';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -40,50 +43,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
 import { SCREENS } from '../../constants';
 import SideDrawer from '../../components/common/SideDrawer';
+import { detectMood } from '../../services/aiService';
+import Toast from 'react-native-toast-message';
 
 const { width } = Dimensions.get('window');
 
-const FALLBACK_STORIES = [
-  { id: '1', name: 'Your Story', avatar: null, isUser: true },
-  { id: '2', name: 'Aarav', avatar: require('../../../assets/aarav_avatar.png'), borderColors: ['#8b5cf6', '#4f6ef7'] },
-  { id: '3', name: 'Priya', avatar: require('../../../assets/priya_avatar.png'), borderColors: ['#ec4899', '#8b5cf6'] },
-  { id: '4', name: 'Ishaan', avatar: require('../../../assets/arjun_avatar.png'), borderColors: ['#10b981', '#4f6ef7'] },
-];
-
-const FALLBACK_POSTS = [
-  {
-    id: 'post1',
-    user: {
-      name: 'Aarav Sharma',
-      avatar: require('../../../assets/aarav_avatar.png'),
-      circle: 'FRIENDS',
-      circleColor: '#8b5cf6',
-    },
-    image: require('../../../assets/post_swirl.png'),
-    caption: 'Exploring the new digital frontiers. Loving the energy in the circles today!\n#VibeSpace #DigitalNomad',
-    time: '2h ago',
-    reactions: ['🔥', '❤️', '😮'],
-    reactionCount: '4.2k',
-    hasReacted: false,
-    commentsCount: 128,
-  },
-  {
-    id: 'post2',
-    user: {
-      name: 'Priya Kapoor',
-      avatar: require('../../../assets/priya_avatar.png'),
-      circle: 'CREATIVES',
-      circleColor: '#ec4899',
-    },
-    image: require('../../../assets/post_workstation.png'),
-    caption: 'Late night setups just hit different. Finally finished the new workstation! 💻✨',
-    time: '5h ago',
-    reactions: ['🔥', '😂', '❤️'],
-    reactionCount: '856',
-    hasReacted: true,
-    commentsCount: 42,
-  }
-];
+// Fallbacks removed. Real data only.
 
 export default function HomeScreen() {
   const navigation = useNavigation();
@@ -94,6 +59,12 @@ export default function HomeScreen() {
   const [stories, setStories] = useState([]);
   const [isUploadingStory, setIsUploadingStory] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  // Story Preview & Song states
+  const [selectedStoryUri, setSelectedStoryUri] = useState(null);
+  const [isStoryPreviewVisible, setIsStoryPreviewVisible] = useState(false);
+  const [selectedStorySong, setSelectedStorySong] = useState(null);
+  const [isStorySongPickerVisible, setIsStorySongPickerVisible] = useState(false);
   
   // API loading states
   const [postsLoading, setPostsLoading] = useState(true);
@@ -108,6 +79,10 @@ export default function HomeScreen() {
   
   const isFetchingRef = useRef(false);
 
+  // Mood Detector Toast
+  const [moodToast, setMoodToast] = useState(null); // { mood_emoji, detected_mood, vibe_comment }
+  const moodToastTimer = useRef(null);
+
   const currentUser = useSelector((state) => state.auth.user);
 
   // Load content
@@ -115,7 +90,9 @@ export default function HomeScreen() {
     setStoriesLoading(true);
     try {
       if (!currentUser?.uid) {
-        setStories([FALLBACK_STORIES[0]]);
+        setStories([
+          { id: 'user_story', name: 'Your Story', avatar: null, isUser: true }
+        ]);
         return;
       }
       const circlesRes = await getUserCircles(currentUser.uid);
@@ -126,7 +103,7 @@ export default function HomeScreen() {
           const mappedStories = storiesRes.data.map(group => ({
             id: group.userId,
             name: group.userName,
-            avatar: group.userAvatar ? { uri: group.userAvatar } : require('../../../assets/aarav_avatar.png'),
+            avatar: group.userAvatar ? { uri: group.userAvatar } : require('../../../assets/default_avatar.png'),
             borderColors: ['#8b5cf6', '#4f6ef7'],
             mediaUrl: group.stories[0]?.mediaUrl || '',
             stories: group.stories || [],
@@ -171,7 +148,7 @@ export default function HomeScreen() {
     
     try {
       if (!currentUser?.uid) {
-        setPosts(FALLBACK_POSTS);
+        setPosts([]);
         setPostsLoading(false);
         setPostsRefreshing(false);
         return;
@@ -200,9 +177,10 @@ export default function HomeScreen() {
 
             return {
               id: post.id || post._id,
+              userId: post.userId,
               user: {
                 name: post.userName,
-                avatar: post.userAvatar ? { uri: post.userAvatar } : require('../../../assets/aarav_avatar.png'),
+                avatar: post.userAvatar ? { uri: post.userAvatar } : require('../../../assets/default_avatar.png'),
                 circle: post.circleId?.toUpperCase() || 'FRIENDS',
                 circleColor: circleColor
               },
@@ -230,18 +208,18 @@ export default function HomeScreen() {
           setHasMorePosts(!!lastDoc && apiPosts.length === 10);
         } else {
           if (isInitial || isRefresh) {
-            setPosts(FALLBACK_POSTS);
+            setPosts([]);
           }
         }
       } else {
         if (isInitial || isRefresh) {
-          setPosts(FALLBACK_POSTS);
+          setPosts([]);
         }
       }
     } catch (error) {
       console.error('Error loading feed:', error);
       if (isInitial || isRefresh) {
-        setPosts(FALLBACK_POSTS);
+        setPosts([]);
       }
     } finally {
       setPostsLoading(false);
@@ -263,6 +241,7 @@ export default function HomeScreen() {
 
     return unsubscribe;
   }, [navigation, currentUser?.uid]);
+
 
   const openStorySheet = () => {
     setIsStorySheetOpen(true);
@@ -318,7 +297,11 @@ export default function HomeScreen() {
         );
         return;
       } else if (!useCamera && libraryPerm.status !== 'granted') {
-        Alert.alert('Permission Denied', 'Gallery permission is required!');
+        Toast.show({
+          type: 'error',
+          text1: 'Permission Denied',
+          text2: 'Gallery permission is required!'
+        });
         return;
       }
 
@@ -342,11 +325,17 @@ export default function HomeScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const localUri = result.assets[0].uri;
-        await uploadAndCreateStory(localUri);
+        setSelectedStoryUri(localUri);
+        setSelectedStorySong(null);
+        setIsStoryPreviewVisible(true);
       }
     } catch (error) {
       console.error('Error launching image picker:', error);
-      Alert.alert('Error', 'Failed to open camera/gallery');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to open camera/gallery'
+      });
     }
   };
 
@@ -394,19 +383,41 @@ export default function HomeScreen() {
         userAvatar,
         mediaUrl: localUri,
         circleId: targetCircleId,
+        song: selectedStorySong ? {
+          trackId: String(selectedStorySong.id),
+          title: selectedStorySong.title,
+          artist: selectedStorySong.artist,
+          artwork: selectedStorySong.artwork,
+          previewUrl: selectedStorySong.previewUrl
+        } : undefined
       };
 
       const response = await createStory(storyPayload);
 
       if (response.success) {
-        Alert.alert('Success', 'Story shared successfully!');
+        Toast.show({
+          type: 'success',
+          text1: 'Story Shared',
+          text2: 'Story shared successfully!'
+        });
         loadStories();
+        setIsStoryPreviewVisible(false);
+        setSelectedStoryUri(null);
+        setSelectedStorySong(null);
       } else {
-        Alert.alert('Error', response.error || 'Failed to publish story');
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: response.error || 'Failed to publish story'
+        });
       }
     } catch (error) {
       console.error('Failed to create story:', error);
-      Alert.alert('Error', error.message || 'An unexpected error occurred');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error.message || 'An unexpected error occurred'
+      });
     } finally {
       setIsUploadingStory(false);
     }
@@ -437,6 +448,86 @@ export default function HomeScreen() {
         return post;
       })
     );
+  };
+
+  const handlePostOptions = (postItem) => {
+    const isOwner = postItem.userId === currentUser?.uid;
+    if (isOwner) {
+      Alert.alert(
+        'Post Options',
+        'What would you like to do with this post?',
+        [
+          {
+            text: 'Delete Post',
+            style: 'destructive',
+            onPress: () => confirmDeletePost(postItem.id)
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          }
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Post Options',
+        'What would you like to do with this post?',
+        [
+          {
+            text: 'Report Post',
+            onPress: () => Toast.show({ type: 'success', text1: 'Reported', text2: 'Thank you for reporting this post.' })
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          }
+        ]
+      );
+    }
+  };
+
+  const confirmDeletePost = (postId) => {
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => executeDeletePost(postId)
+        }
+      ]
+    );
+  };
+
+  const executeDeletePost = async (postId) => {
+    try {
+      const deleteRes = await deletePost(postId);
+      if (deleteRes.success) {
+        setPosts(prev => prev.filter(p => p.id !== postId));
+        Toast.show({
+          type: 'success',
+          text1: 'Deleted',
+          text2: 'Post deleted successfully!'
+        });
+      } else {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: deleteRes.error || 'Failed to delete post.'
+        });
+      }
+    } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error.message || 'An unexpected error occurred.'
+      });
+    }
   };
 
   const renderHeader = () => (
@@ -521,6 +612,7 @@ export default function HomeScreen() {
               onPress={() => navigation.navigate(SCREENS.STORY_VIEWER, { 
                 storyUser: item.name,
                 storyAvatar: item.avatar,
+                storyUserId: item.id,
                 storyMediaUrl: item.mediaUrl,
                 allStories: item.stories || [],
                 isOwnStory: item.isOwn || false,
@@ -564,7 +656,7 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
-          <TouchableOpacity onPress={() => alert('Post options')}>
+          <TouchableOpacity onPress={() => handlePostOptions(item)}>
             <Ionicons name="ellipsis-horizontal" size={20} color={COLORS.textMuted || '#a78bfa'} />
           </TouchableOpacity>
         </View>
@@ -630,8 +722,8 @@ export default function HomeScreen() {
     <View style={[
       styles.container, 
       { 
-        paddingTop: insets.top,
-        paddingBottom: insets.bottom + 80
+        paddingTop: insets?.top || 0,
+        paddingBottom: (insets?.bottom || 0) + 80
       }
     ]}>
       <StatusBar barStyle="light-content" />
@@ -722,6 +814,143 @@ export default function HomeScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      {/* Story Preview Modal */}
+      <Modal
+        visible={isStoryPreviewVisible}
+        animationType="slide"
+        onRequestClose={() => {
+          setIsStoryPreviewVisible(false);
+          setSelectedStoryUri(null);
+          setSelectedStorySong(null);
+        }}
+      >
+        {selectedStoryUri && (
+          <ImageBackground
+            source={{ uri: selectedStoryUri }}
+            style={styles.previewBackground}
+            resizeMode="cover"
+          >
+            <View style={styles.previewDarkOverlay} />
+            
+            <View style={[styles.previewContent, { paddingTop: insets?.top || 0, paddingBottom: (insets?.bottom || 0) + 20 }]}>
+              {/* Top Close Button */}
+              <View style={styles.previewHeader}>
+                <TouchableOpacity
+                  style={styles.previewCloseBtn}
+                  onPress={() => {
+                    setIsStoryPreviewVisible(false);
+                    setSelectedStoryUri(null);
+                    setSelectedStorySong(null);
+                  }}
+                >
+                  <Ionicons name="close" size={28} color="#ffffff" />
+                </TouchableOpacity>
+                <Text style={styles.previewTitle}>Preview Story</Text>
+                <View style={{ width: 40 }} />
+              </View>
+
+              {/* Centered Add Song / Song Overlay */}
+              <View style={styles.previewBody}>
+                {selectedStorySong ? (
+                  <View style={styles.previewSongContainer}>
+                    <SongOverlay
+                      song={selectedStorySong}
+                      onPress={() => setIsStorySongPickerVisible(true)}
+                    />
+                    <TouchableOpacity
+                      style={styles.previewRemoveSongBtn}
+                      onPress={() => setSelectedStorySong(null)}
+                    >
+                      <Ionicons name="close-circle" size={22} color="#ffffff" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.previewAddSongBtn}
+                    onPress={() => setIsStorySongPickerVisible(true)}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={['rgba(139, 92, 246, 0.65)', 'rgba(79, 110, 247, 0.65)']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.previewAddSongGradient}
+                    >
+                      <Ionicons name="musical-notes" size={20} color="#ffffff" style={{ marginRight: 8 }} />
+                      <Text style={styles.previewAddSongText}>Add a Song 🎵</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Bottom Share Story Button */}
+              <View style={styles.previewFooter}>
+                <TouchableOpacity
+                  style={styles.previewShareBtnTouch}
+                  onPress={() => uploadAndCreateStory(selectedStoryUri)}
+                  disabled={isUploadingStory}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={['#8b5cf6', '#4f6ef7']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.previewShareBtnGradient}
+                  >
+                    {isUploadingStory ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <Text style={styles.previewShareBtnText}>Share Story ✨</Text>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ImageBackground>
+        )}
+      </Modal>
+
+      {/* Song Picker Modal specifically for Story */}
+      <SongPickerModal
+        visible={isStorySongPickerVisible}
+        onClose={() => setIsStorySongPickerVisible(false)}
+        onSelectSong={(song) => {
+          setSelectedStorySong(song);
+          setIsStorySongPickerVisible(false);
+        }}
+      />
+
+      {/* Mood Detector Toast */}
+      {moodToast && (
+        <View style={styles.moodToast}>
+          <View style={styles.moodToastContent}>
+            <Text style={styles.moodToastEmoji}>{moodToast.mood_emoji}</Text>
+            <View style={styles.moodToastTextCol}>
+              <Text style={styles.moodToastTitle}>Feeling {moodToast.detected_mood}?</Text>
+              <Text style={styles.moodToastSub} numberOfLines={1}>{moodToast.vibe_comment}</Text>
+            </View>
+          </View>
+          <View style={styles.moodToastActions}>
+            <TouchableOpacity
+              style={styles.moodToastBtn}
+              onPress={() => {
+                Toast.show({
+                  type: 'success',
+                  text1: 'Mood Updated!',
+                  text2: `Your mood is now ${moodToast.mood_emoji} ${moodToast.detected_mood}`
+                });
+                setMoodToast(null);
+              }}
+            >
+              <Text style={styles.moodToastBtnText}>Update</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setMoodToast(null)}>
+              <Text style={styles.moodToastDismiss}>Nah</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -748,6 +977,10 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(139, 92, 246, 0.4)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 6,
+  },
+  headerLogoImage: {
+    width: 80,
+    height: 40,
   },
   headerButton: {
     padding: 4,
@@ -1012,5 +1245,173 @@ const styles = StyleSheet.create({
     fontSize: 16,
     ...FONTS.medium,
     color: '#ffffff',
+  },
+
+  /* Mood Detector Toast */
+  moodToast: {
+    position: 'absolute',
+    bottom: 90,
+    left: 16,
+    right: 16,
+    backgroundColor: COLORS.card || '#2d1054',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(167, 139, 250, 0.25)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...SHADOWS.medium,
+  },
+  moodToastContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  moodToastEmoji: {
+    fontSize: 28,
+    marginRight: 10,
+  },
+  moodToastTextCol: {
+    flex: 1,
+  },
+  moodToastTitle: {
+    fontSize: 14,
+    ...FONTS.bold,
+    color: '#ffffff',
+  },
+  moodToastSub: {
+    fontSize: 11,
+    color: COLORS.textMuted || '#a78bfa',
+    ...FONTS.regular,
+    marginTop: 1,
+  },
+  moodToastActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  moodToastBtn: {
+    backgroundColor: '#8b5cf6',
+    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    marginRight: 8,
+  },
+  moodToastBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    ...FONTS.bold,
+  },
+  moodToastDismiss: {
+    color: COLORS.textMuted || '#a78bfa',
+    fontSize: 12,
+    ...FONTS.medium,
+  },
+
+  /* ---------- Story Preview Modal Styles ---------- */
+  previewBackground: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  previewDarkOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(10, 3, 20, 0.35)',
+  },
+  previewContent: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    height: 56,
+  },
+  previewCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewTitle: {
+    fontSize: 18,
+    ...FONTS.bold,
+    color: '#ffffff',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  previewBody: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  previewSongContainer: {
+    position: 'relative',
+    alignSelf: 'center',
+  },
+  previewRemoveSongBtn: {
+    position: 'absolute',
+    top: -10,
+    right: -10,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 12,
+    padding: 2,
+    zIndex: 10,
+  },
+  previewAddSongBtn: {
+    borderRadius: 25,
+    overflow: 'hidden',
+    shadowColor: '#8b5cf6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  previewAddSongGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 25,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  previewAddSongText: {
+    color: '#ffffff',
+    fontSize: 15,
+    ...FONTS.bold,
+  },
+  previewFooter: {
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  previewShareBtnTouch: {
+    width: '100%',
+    borderRadius: 25,
+    overflow: 'hidden',
+    shadowColor: '#8b5cf6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  previewShareBtnGradient: {
+    width: '100%',
+    paddingVertical: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 25,
+  },
+  previewShareBtnText: {
+    color: '#ffffff',
+    fontSize: 16,
+    ...FONTS.bold,
   },
 });

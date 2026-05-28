@@ -6,8 +6,8 @@ import {
   TouchableOpacity,
   ScrollView,
   StatusBar,
-  Alert,
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -68,12 +68,11 @@ export default function ChatExpiryScreen() {
       }
       
       const optionLabel = expiryOptions.find(opt => opt.id === selectedOption)?.label || selectedOption;
-      Alert.alert('Success', `Message expiry setting saved: ${optionLabel}`, [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
+      Toast.show({ type: 'success', text1: 'Success', text2: `Message expiry setting saved: ${optionLabel}` });
+      setTimeout(() => navigation.goBack(), 1000);
     } catch (error) {
       console.error('Error saving message expiry setting:', error);
-      Alert.alert('Error', 'Failed to save message expiry settings');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to save message expiry settings' });
     }
   };
 

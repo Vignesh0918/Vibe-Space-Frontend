@@ -42,9 +42,9 @@ const GROUP_INFO = {
   name: 'Vibe Tribe',
   memberCount: 12,
   avatars: [
-    require('../../../assets/aarav_avatar.png'),
-    require('../../../assets/priya_avatar.png'),
-    require('../../../assets/arjun_avatar.png'),
+    require('../../../assets/default_avatar.png'),
+    require('../../../assets/default_avatar.png'),
+    require('../../../assets/default_avatar.png'),
   ],
 };
 
@@ -64,7 +64,7 @@ const MESSAGES = [
   {
     id: '2',
     sender: 'Arjun',
-    avatar: require('../../../assets/arjun_avatar.png'),
+    avatar: require('../../../assets/default_avatar.png'),
     text: 'Yo, are we still hitting that underground set tonight? 🎧',
     time: '21:04',
     isMine: false,
@@ -72,7 +72,7 @@ const MESSAGES = [
   {
     id: '3',
     sender: 'Priya',
-    avatar: require('../../../assets/priya_avatar.png'),
+    avatar: require('../../../assets/default_avatar.png'),
     text: "Count me in! I heard the DJ is playing some exclusive remixes. Can't wait! ✨",
     time: '21:06',
     isMine: false,
@@ -88,11 +88,11 @@ const MESSAGES = [
   {
     id: '5',
     sender: 'Rohan',
-    avatar: require('../../../assets/aarav_avatar.png'),
+    avatar: require('../../../assets/default_avatar.png'),
     text: 'Check the vibe from last year! 🔥',
     time: '21:15',
     isMine: false,
-    image: require('../../../assets/post_swirl.png'),
+    image: require('../../../assets/concert_image.png'),
   },
 ];
 

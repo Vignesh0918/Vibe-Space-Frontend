@@ -356,6 +356,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     ...FONTS.bold,
   },
+  headerLogoImage: {
+    width: 80,
+    height: 40,
+  },
   coverContainer: {
     width: '100%',
     height: 160,

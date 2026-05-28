@@ -19,7 +19,7 @@
       "package": "com.vicky.vibespace",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0a0212"
       },
       "edgeToEdgeEnabled": true,
       "googleServicesFile": "./google-services.json"

@@ -23,7 +23,10 @@ import {
   Image, 
   Dimensions,
   StatusBar,
-  ActivityIndicator
+  ActivityIndicator,
+  Modal,
+  Alert,
+  Clipboard
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -34,6 +37,8 @@ import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
 import { SCREENS } from '../../constants';
 import SideDrawer from '../../components/common/SideDrawer';
 import { listenToUserCircles } from '../../services/circleService';
+import { generateCircleNames } from '../../services/aiService';
+import Toast from 'react-native-toast-message';
 
 const { width } = Dimensions.get('window');
 
@@ -145,6 +150,11 @@ export default function CirclesScreen() {
 
   const currentUser = useSelector((state) => state.auth.user);
 
+  // AI Circle Name Generator State
+  const [isNameModalOpen, setIsNameModalOpen] = useState(false);
+  const [aiNames, setAiNames] = useState(null);
+  const [isAINamesLoading, setIsAINamesLoading] = useState(false);
+
   const fetchUserCirclesData = useCallback(() => {
     if (!currentUser?.uid) {
       setCircles(FALLBACK_CIRCLES);
@@ -178,6 +188,35 @@ export default function CirclesScreen() {
       circleName: circle.name,
       circleColor: circle.color
     });
+  };
+
+  const handleGenerateCircleNames = async () => {
+    setIsNameModalOpen(true);
+    setIsAINamesLoading(true);
+    setAiNames(null);
+    try {
+      const res = await generateCircleNames('Custom', '✨', 'Invite Only', 5);
+      if (res.success && res.data) {
+        setAiNames(res.data);
+      } else {
+        Toast.show({
+          type: 'error',
+          text1: 'AI Error',
+          text2: res.error || 'Failed to generate names.'
+        });
+        setIsNameModalOpen(false);
+      }
+    } catch (err) {
+      console.warn('Circle name generation failed:', err);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Something went wrong.'
+      });
+      setIsNameModalOpen(false);
+    } finally {
+      setIsAINamesLoading(false);
+    }
   };
 
   const renderHeader = () => (
@@ -274,6 +313,16 @@ export default function CirclesScreen() {
           <Text style={styles.createCardText}>Create New Circle</Text>
         </TouchableOpacity>
 
+        {/* AI Circle Name Suggestion Button */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={handleGenerateCircleNames}
+          style={styles.aiNameButton}
+        >
+          <Ionicons name="sparkles" size={16} color="#a78bfa" />
+          <Text style={styles.aiNameButtonText}>✨ AI Suggest Names</Text>
+        </TouchableOpacity>
+
         {/* Recommended Circles Section */}
         <View style={[styles.sectionHeader, { marginTop: 28 }]}>
           <Text style={styles.sectionTitle}>Recommended</Text>
@@ -332,6 +381,66 @@ export default function CirclesScreen() {
       </ScrollView>
 
       <SideDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+
+      {/* AI Circle Names Bottom Sheet */}
+      <Modal
+        visible={isNameModalOpen}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setIsNameModalOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.aiModalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsNameModalOpen(false)}
+        >
+          <View style={styles.aiModalSheet}>
+            <View style={styles.aiModalHandle} />
+            <Text style={styles.aiModalTitle}>✨ AI Name Suggestions</Text>
+
+            {isAINamesLoading ? (
+              <View style={styles.aiModalLoading}>
+                <ActivityIndicator size="large" color="#a78bfa" />
+                <Text style={styles.aiModalLoadingText}>Generating creative names...</Text>
+              </View>
+            ) : aiNames ? (
+              <>
+                {aiNames.suggestions?.map((suggestion, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[
+                      styles.aiNameCard,
+                      suggestion.name === aiNames.best_pick && styles.aiNameCardBest
+                    ]}
+                    onPress={() => {
+                      Clipboard.setString(suggestion.name);
+                      Toast.show({
+                        type: 'success',
+                        text1: 'Name Copied',
+                        text2: `"${suggestion.name}" copied to clipboard! Use it when creating your circle.`
+                      });
+                      setIsNameModalOpen(false);
+                    }}
+                  >
+                    <View style={styles.aiNameCardRow}>
+                      <Text style={styles.aiNameCardEmoji}>{suggestion.emoji_match}</Text>
+                      <View style={styles.aiNameCardContent}>
+                        <Text style={styles.aiNameCardName}>{suggestion.name}</Text>
+                        <Text style={styles.aiNameCardVibe}>{suggestion.vibe}</Text>
+                      </View>
+                      {suggestion.name === aiNames.best_pick && (
+                        <View style={styles.bestPickBadge}>
+                          <Text style={styles.bestPickText}>BEST</Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </>
+            ) : null}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -358,6 +467,10 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(139, 92, 246, 0.4)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 6,
+  },
+  headerLogoImage: {
+    width: 80,
+    height: 40,
   },
   headerButton: {
     padding: 4,
@@ -558,5 +671,109 @@ const styles = StyleSheet.create({
   paginationDotActive: {
     backgroundColor: '#ffffff',
     width: 14,
+  },
+
+  /* AI Circle Name Generator */
+  aiNameButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    borderRadius: 14,
+    paddingVertical: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.2)',
+  },
+  aiNameButtonText: {
+    color: '#a78bfa',
+    fontSize: 13,
+    ...FONTS.bold,
+    marginLeft: 6,
+  },
+  aiModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(10, 2, 18, 0.75)',
+    justifyContent: 'flex-end',
+  },
+  aiModalSheet: {
+    backgroundColor: COLORS.card || '#2d1054',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 40,
+    borderColor: 'rgba(167, 139, 250, 0.2)',
+    borderTopWidth: 1.5,
+  },
+  aiModalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  aiModalTitle: {
+    fontSize: 18,
+    ...FONTS.bold,
+    color: '#ffffff',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  aiModalLoading: {
+    alignItems: 'center',
+    paddingVertical: 30,
+  },
+  aiModalLoadingText: {
+    color: '#a78bfa',
+    fontSize: 13,
+    ...FONTS.medium,
+    marginTop: 12,
+  },
+  aiNameCard: {
+    backgroundColor: 'rgba(26, 5, 51, 0.6)',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.12)',
+  },
+  aiNameCardBest: {
+    borderColor: '#f59e0b',
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+  },
+  aiNameCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  aiNameCardEmoji: {
+    fontSize: 28,
+    marginRight: 12,
+  },
+  aiNameCardContent: {
+    flex: 1,
+  },
+  aiNameCardName: {
+    fontSize: 16,
+    ...FONTS.bold,
+    color: '#ffffff',
+  },
+  aiNameCardVibe: {
+    fontSize: 12,
+    color: COLORS.textMuted || '#a78bfa',
+    ...FONTS.regular,
+    marginTop: 2,
+  },
+  bestPickBadge: {
+    backgroundColor: '#f59e0b',
+    borderRadius: 8,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+  },
+  bestPickText: {
+    fontSize: 9,
+    ...FONTS.bold,
+    color: '#1a0533',
+    letterSpacing: 0.5,
   },
 });

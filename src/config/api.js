@@ -2,14 +2,9 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 import { auth } from './firebase';
 
-// On Android emulators, 10.0.2.2 routes to the host machine's localhost.
-// On iOS simulators, localhost (or 127.0.0.1) routes directly to the host machine.
-// For physical devices running Expo, replace with your local network IP (e.g. 'http://192.168.1.X:5000').
-const getBaseUrl = () => {
-  return 'https://luann-interprofessional-verbally.ngrok-free.dev';
-};
-
-const API_URL = getBaseUrl();
+// Development Ngrok URL or production endpoint constant
+//const API_URL = 'https://luann-interprofessional-verbally.ngrok-free.dev';
+const API_URL = 'https://vibe-space-production.up.railway.app';
 
 const apiClient = axios.create({
   baseURL: `${API_URL}/api`,

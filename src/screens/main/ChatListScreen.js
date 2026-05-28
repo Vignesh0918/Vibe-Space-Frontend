@@ -22,6 +22,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -105,11 +106,11 @@ export default function ChatListScreen() {
           chatName: targetUser.displayName,
         });
       } else {
-        Alert.alert('Error', res.error || 'Could not start chat room.');
+        Toast.show({ type: 'error', text1: 'Error', text2: res.error || 'Could not start chat room.' });
       }
     } catch (err) {
       setIsLoading(false);
-      Alert.alert('Error', err.message);
+      Toast.show({ type: 'error', text1: 'Error', text2: err.message });
     }
   };
 
@@ -126,10 +127,10 @@ export default function ChatListScreen() {
             try {
               const res = await leaveOrDeleteChat(chat.id);
               if (!res.success) {
-                Alert.alert('Error', res.error || 'Failed to exit chat.');
+                Toast.show({ type: 'error', text1: 'Error', text2: res.error || 'Failed to exit chat.' });
               }
             } catch (err) {
-              Alert.alert('Error', err.message);
+              Toast.show({ type: 'error', text1: 'Error', text2: err.message });
             }
           }
         }
@@ -300,7 +301,7 @@ export default function ChatListScreen() {
                     onPress={() => handleStartChat(item)}
                   >
                     <Image 
-                      source={item.photoURL ? { uri: item.photoURL } : require('../../../assets/aarav_avatar.png')} 
+                      source={item.photoURL ? { uri: item.photoURL } : require('../../../assets/default_avatar.png')} 
                       style={styles.contactAvatar}
                     />
                     <View style={styles.contactInfo}>
@@ -352,6 +353,10 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(79, 110, 247, 0.5)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 6,
+  },
+  headerLogoImage: {
+    width: 80,
+    height: 40,
   },
   notifWrapper: { position: 'relative' },
   notifDot: {

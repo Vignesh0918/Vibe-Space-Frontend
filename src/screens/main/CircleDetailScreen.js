@@ -41,32 +41,32 @@ const GRID_ITEM_SIZE = (width - 32 - 16) / 3;
 
 // Mock members
 const MEMBERS_DATA = [
-  { id: '1', name: 'Aarav Sharma', role: 'Creator', avatar: require('../../../assets/aarav_avatar.png'), isOnline: true },
-  { id: '2', name: 'Priya Kapoor', role: 'Moderator', avatar: require('../../../assets/priya_avatar.png'), isOnline: true },
-  { id: '3', name: 'Ishaan Verma', role: 'Member', avatar: require('../../../assets/arjun_avatar.png'), isOnline: false },
-  { id: '4', name: 'Esha Sen', role: 'Member', avatar: require('../../../assets/aria_avatar.png'), isOnline: true },
-  { id: '5', name: 'Arjun Das', role: 'Member', avatar: require('../../../assets/arjun_avatar.png'), isOnline: false },
-  { id: '6', name: 'Aria Mehta', role: 'Member', avatar: require('../../../assets/aria_avatar.png'), isOnline: true },
+  { id: '1', name: 'Aarav Sharma', role: 'Creator', avatar: require('../../../assets/default_avatar.png'), isOnline: true },
+  { id: '2', name: 'Priya Kapoor', role: 'Moderator', avatar: require('../../../assets/default_avatar.png'), isOnline: true },
+  { id: '3', name: 'Ishaan Verma', role: 'Member', avatar: require('../../../assets/default_avatar.png'), isOnline: false },
+  { id: '4', name: 'Esha Sen', role: 'Member', avatar: require('../../../assets/default_avatar.png'), isOnline: true },
+  { id: '5', name: 'Arjun Das', role: 'Member', avatar: require('../../../assets/default_avatar.png'), isOnline: false },
+  { id: '6', name: 'Aria Mehta', role: 'Member', avatar: require('../../../assets/default_avatar.png'), isOnline: true },
 ];
 
 // Mock posts for 3-column grid
 const POSTS_DATA = [
   { id: 'p1', image: require('../../../assets/post_swirl.png') },
   { id: 'p2', image: require('../../../assets/post_workstation.png') },
-  { id: 'p3', image: require('../../../assets/cosmic_wave.png') },
+  { id: 'p3', image: require('../../../assets/concert_image.png') },
   { id: 'p4', image: require('../../../assets/cosmic_wave.png') },
-  { id: 'p5', image: require('../../../assets/media__1779348639761.png') },
-  { id: 'p6', image: require('../../../assets/media__1779348907328.png') },
-  { id: 'p7', image: require('../../../assets/media__1779350622091.png') },
-  { id: 'p8', image: require('../../../assets/post_swirl.png') },
-  { id: 'p9', image: require('../../../assets/post_workstation.png') },
+  { id: 'p5', image: require('../../../assets/media__1779349699782.png') },
+  { id: 'p6', image: require('../../../assets/media__1779350719876.png') },
+  { id: 'p7', image: require('../../../assets/media__1779351405157.png') },
+  { id: 'p8', image: require('../../../assets/media__1779352220248.png') },
+  { id: 'p9', image: require('../../../assets/media__1779352232448.png') },
 ];
 
 // Mock chat messages
 const INITIAL_MESSAGES = [
-  { id: 'm1', sender: 'Aarav Sharma', avatar: require('../../../assets/aarav_avatar.png'), text: 'Yo, anyone up for the concert tonight? 🎸', time: '6m ago', isMe: false },
-  { id: 'm2', sender: 'Priya Kapoor', avatar: require('../../../assets/priya_avatar.png'), text: 'I am! Just finished setting up my workspace 💻', time: '4m ago', isMe: false },
-  { id: 'm3', sender: 'Ishaan Verma', avatar: require('../../../assets/arjun_avatar.png'), text: 'Count me in! Let\'s vibe out. 🔥', time: '2m ago', isMe: false },
+  { id: 'm1', sender: 'Aarav Sharma', avatar: require('../../../assets/default_avatar.png'), text: 'Yo, anyone up for the concert tonight? 🎸', time: '6m ago', isMe: false },
+  { id: 'm2', sender: 'Priya Kapoor', avatar: require('../../../assets/default_avatar.png'), text: 'I am! Just finished setting up my workspace 💻', time: '4m ago', isMe: false },
+  { id: 'm3', sender: 'Ishaan Verma', avatar: require('../../../assets/default_avatar.png'), text: 'Count me in! Let\'s vibe out. 🔥', time: '2m ago', isMe: false },
   { id: 'm4', sender: 'You', avatar: null, text: 'Awesome! Let\'s meet outside the venue at 8. 🎟️', time: 'Just now', isMe: true },
 ];
 

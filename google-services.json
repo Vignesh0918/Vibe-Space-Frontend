@@ -14,11 +14,27 @@
             },
             "oauth_client": [
                 {
+                    "client_id": "625209346750-0hqj5lm67jrncf97u46jl7fjafpk21s3.apps.googleusercontent.com",
+                    "client_type": 1,
+                    "android_info": {
+                        "package_name": "com.vicky.vibespace",
+                        "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+                    }
+                },
+                {
                     "client_id": "625209346750-f431ptpj87mdfs47ed5srr6pq5oc42bq.apps.googleusercontent.com",
                     "client_type": 1,
                     "android_info": {
                         "package_name": "com.vicky.vibespace",
                         "certificate_hash": "b175d873d71347fdef5322923c5ef9144ee78d7e"
+                    }
+                },
+                {
+                    "client_id": "625209346750-sup01u2hk4o8kh35cm3270qg5odc7f2j.apps.googleusercontent.com",
+                    "client_type": 1,
+                    "android_info": {
+                        "package_name": "com.vicky.vibespace",
+                        "certificate_hash": "70e94bfe472416f50265c1b9fbcffe5405bd186e"
                     }
                 },
                 {
