@@ -4,39 +4,14 @@
  * online presence updates, and session state tracking.
  */
 
-import { signInAnonymously, signOut, onAuthStateChanged, signInWithCredential, GoogleAuthProvider } from 'firebase/auth';
+import { signOut, onAuthStateChanged, signInWithCredential, GoogleAuthProvider } from 'firebase/auth';
 import { auth } from './firebase';
 import { uploadFile } from './storageService';
 import apiClient from '../config/api';
 
 
 
-/**
- * Signs in with a simulated Google account.
- * Since Expo Go doesn't support native Google Sign-In, we use anonymous Firebase auth
- * to generate a valid UID and token, then attach the Google profile details.
- * 
- * @param {object} googleUser - Simulated Google user profile { displayName, email, photoURL }.
- * @returns {Promise<{success: boolean, data?: object, error?: string}>}
- */
-export async function loginWithGoogle(googleUser) {
-  try {
-    const anonResult = await signInAnonymously(auth);
-    const user = anonResult.user;
-    return {
-      success: true,
-      data: {
-        uid: user.uid,
-        displayName: googleUser.displayName,
-        email: googleUser.email,
-        photoURL: googleUser.photoURL,
-        phoneNumber: null,
-      },
-    };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
+
 
 /**
  * Signs in with a real Google account using native SDK and Firebase.

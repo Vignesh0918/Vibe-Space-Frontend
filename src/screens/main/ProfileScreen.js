@@ -59,8 +59,10 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchProfileData = async (isPull = false) => {
-    if (isPull) {
+  const fetchProfileData = async (isPull = false, isSilent = false) => {
+    if (isSilent) {
+      // Silent load: do not trigger any loading spinner
+    } else if (isPull) {
       setIsRefreshing(true);
     } else {
       setIsLoading(true);
@@ -97,8 +99,15 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (currentUserId) {
       fetchProfileData();
+
+      // Listen for navigation focus to refresh posts list (e.g. if a post was deleted)
+      const unsubscribe = navigation.addListener('focus', () => {
+        fetchProfileData(false, true);
+      });
+
+      return unsubscribe;
     }
-  }, [currentUserId]);
+  }, [currentUserId, navigation]);
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>

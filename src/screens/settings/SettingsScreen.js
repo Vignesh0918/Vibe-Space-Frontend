@@ -24,11 +24,29 @@ import { SCREENS } from '../../constants';
 import Toast from 'react-native-toast-message';
 import { useDispatch } from 'react-redux';
 import { logoutThunk } from '../../store/slices/authSlice';
+import CustomAlertModal from '../../components/common/CustomAlertModal';
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const dispatch = useDispatch();
+
+  // Custom Alert State
+  const [customAlert, setCustomAlert] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: []
+  });
+
+  const showAlert = (title, message, buttons) => {
+    setCustomAlert({
+      visible: true,
+      title,
+      message,
+      buttons
+    });
+  };
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>
@@ -134,13 +152,14 @@ export default function SettingsScreen() {
           </TouchableOpacity>
 
 
+
           {/* Delete Account */}
           <TouchableOpacity 
             activeOpacity={0.8}
             style={styles.optionCard}
-            onPress={() => Alert.alert('Delete Account', 'Are you sure you want to permanently delete your account?', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Delete', style: 'destructive', onPress: () => alert('Account deleted') }
+            onPress={() => showAlert('Delete Account', 'Are you sure you want to permanently delete your account?', [
+              { text: 'Delete', style: 'destructive', onPress: () => Toast.show({ type: 'success', text1: 'Account Deleted', text2: 'Your account has been permanently deleted.' }) },
+              { text: 'Cancel', style: 'cancel' }
             ])}
           >
             <View style={styles.optionLeft}>
@@ -157,18 +176,18 @@ export default function SettingsScreen() {
         <TouchableOpacity 
           activeOpacity={0.8}
           style={styles.logoutButton}
-          onPress={() => Alert.alert(
+          onPress={() => showAlert(
             'Logout',
             'Are you sure you want to logout from VibeSpace?',
             [
-              { text: 'Cancel', style: 'cancel' },
               { 
                 text: 'Logout', 
                 style: 'destructive', 
                 onPress: () => {
                   dispatch(logoutThunk());
                 }
-              }
+              },
+              { text: 'Cancel', style: 'cancel' }
             ]
           )}
         >
@@ -180,6 +199,15 @@ export default function SettingsScreen() {
           VIBESPACE V2.4.0 • BUILT FOR THE NIGHT
         </Text>
       </ScrollView>
+
+      {/* Custom Alert Modal */}
+      <CustomAlertModal
+        visible={customAlert.visible}
+        onClose={() => setCustomAlert(prev => ({ ...prev, visible: false }))}
+        title={customAlert.title}
+        message={customAlert.message}
+        buttons={customAlert.buttons}
+      />
     </View>
   );
 }

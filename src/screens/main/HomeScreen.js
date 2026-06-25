@@ -25,7 +25,8 @@ import {
   Animated,
   Modal,
   TouchableWithoutFeedback,
-  ImageBackground
+  ImageBackground,
+  TextInput
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSelector } from 'react-redux';
@@ -45,6 +46,8 @@ import { SCREENS } from '../../constants';
 import SideDrawer from '../../components/common/SideDrawer';
 import { detectMood } from '../../services/aiService';
 import Toast from 'react-native-toast-message';
+import apiClient from '../../config/api';
+import CustomAlertModal from '../../components/common/CustomAlertModal';
 
 const { width } = Dimensions.get('window');
 
@@ -65,6 +68,8 @@ export default function HomeScreen() {
   const [isStoryPreviewVisible, setIsStoryPreviewVisible] = useState(false);
   const [selectedStorySong, setSelectedStorySong] = useState(null);
   const [isStorySongPickerVisible, setIsStorySongPickerVisible] = useState(false);
+  const [selectedStoryMention, setSelectedStoryMention] = useState(null);
+  const [isStoryMentionPickerVisible, setIsStoryMentionPickerVisible] = useState(false);
   
   // API loading states
   const [postsLoading, setPostsLoading] = useState(true);
@@ -82,6 +87,63 @@ export default function HomeScreen() {
   // Mood Detector Toast
   const [moodToast, setMoodToast] = useState(null); // { mood_emoji, detected_mood, vibe_comment }
   const moodToastTimer = useRef(null);
+
+  // Animated visibility for stories on scroll direction
+  const scrollAnim = useRef(new Animated.Value(0)).current;
+  const lastScrollY = useRef(0);
+  const [headerHidden, setHeaderHidden] = useState(false);
+
+  // Custom Alert State
+  const [customAlert, setCustomAlert] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: []
+  });
+
+  const showAlert = (title, message, buttons) => {
+    setCustomAlert({
+      visible: true,
+      title,
+      message,
+      buttons
+    });
+  };
+
+  const handleScroll = (event) => {
+    const currentOffset = event.nativeEvent.contentOffset.y;
+    const diff = currentOffset - lastScrollY.current;
+    
+    if (currentOffset > 50) {
+      if (diff > 5) {
+        // Scrolling down -> Hide stories header (translateY: -130, opacity: 0)
+        setHeaderHidden(true);
+        Animated.timing(scrollAnim, {
+          toValue: -130,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+      } else if (diff < -5) {
+        // Scrolling up -> Show stories header (translateY: 0, opacity: 1)
+        setHeaderHidden(false);
+        Animated.timing(scrollAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+      }
+    } else {
+      // Near top -> always show
+      setHeaderHidden(false);
+      Animated.timing(scrollAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+    
+    lastScrollY.current = currentOffset;
+  };
 
   const currentUser = useSelector((state) => state.auth.user);
 
@@ -281,7 +343,7 @@ export default function HomeScreen() {
       const libraryPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (useCamera && cameraPerm.status !== 'granted') {
-        Alert.alert(
+        showAlert(
           'Camera Permission Required',
           'Camera permission is required to share a story from your camera. Would you like to pick a photo from your Gallery instead?',
           [
@@ -339,6 +401,54 @@ export default function HomeScreen() {
     }
   };
 
+  const [mentionSearchQuery, setMentionSearchQuery] = useState('');
+  const [mentionUsers, setMentionUsers] = useState([]);
+  const [isLoadingMentionSearch, setIsLoadingMentionSearch] = useState(false);
+  const mentionSearchTimerRef = useRef(null);
+
+  // Search users for mentioning (with debounce)
+  useEffect(() => {
+    if (!isStoryMentionPickerVisible) {
+      setMentionUsers([]);
+      setMentionSearchQuery('');
+      return;
+    }
+
+    if (mentionSearchTimerRef.current) {
+      clearTimeout(mentionSearchTimerRef.current);
+    }
+
+    mentionSearchTimerRef.current = setTimeout(async () => {
+      setIsLoadingMentionSearch(true);
+      try {
+        const endpoint = mentionSearchQuery.trim()
+          ? `/users/search?q=${encodeURIComponent(mentionSearchQuery.trim())}`
+          : '/users/recommended';
+        const response = await apiClient.get(endpoint);
+        if (response.data?.success && Array.isArray(response.data.data)) {
+          // Filter out current user
+          const filteredUsers = response.data.data.filter(
+            (u) => u.uid !== currentUser?.uid
+          );
+          setMentionUsers(filteredUsers);
+        } else {
+          setMentionUsers([]);
+        }
+      } catch (error) {
+        console.error('Error fetching users for mention:', error);
+        setMentionUsers([]);
+      } finally {
+        setIsLoadingMentionSearch(false);
+      }
+    }, 400);
+
+    return () => {
+      if (mentionSearchTimerRef.current) {
+        clearTimeout(mentionSearchTimerRef.current);
+      }
+    };
+  }, [mentionSearchQuery, isStoryMentionPickerVisible, currentUser?.uid]);
+
   const uploadAndCreateStory = async (localUri) => {
     setIsUploadingStory(true);
     try {
@@ -383,6 +493,7 @@ export default function HomeScreen() {
         userAvatar,
         mediaUrl: localUri,
         circleId: targetCircleId,
+        mentionedUserId: selectedStoryMention?.uid || null,
         song: selectedStorySong ? {
           trackId: String(selectedStorySong.id),
           title: selectedStorySong.title,
@@ -404,6 +515,7 @@ export default function HomeScreen() {
         setIsStoryPreviewVisible(false);
         setSelectedStoryUri(null);
         setSelectedStorySong(null);
+        setSelectedStoryMention(null);
       } else {
         Toast.show({
           type: 'error',
@@ -421,6 +533,95 @@ export default function HomeScreen() {
     } finally {
       setIsUploadingStory(false);
     }
+  };
+
+  const renderStoryMentionPickerModal = () => {
+    return (
+      <Modal
+        visible={isStoryMentionPickerVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsStoryMentionPickerVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Mention Friend</Text>
+              <TouchableOpacity 
+                style={styles.modalCloseButton}
+                onPress={() => setIsStoryMentionPickerVisible(false)}
+              >
+                <Ionicons name="close" size={24} color="#ffffff" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Input */}
+            <View style={styles.modalSearchWrapper}>
+              <Ionicons name="search" size={18} color="rgba(255,255,255,0.4)" style={styles.modalSearchIcon} />
+              <TextInput
+                placeholder="Search friends..."
+                placeholderTextColor="rgba(255,255,255,0.4)"
+                style={styles.modalSearchInput}
+                value={mentionSearchQuery}
+                onChangeText={setMentionSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            {/* Users list */}
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalListContent}
+            >
+              {isLoadingMentionSearch ? (
+                <View style={styles.modalLoadingContainer}>
+                  <ActivityIndicator size="small" color="#8b5cf6" />
+                  <Text style={styles.modalLoadingText}>Searching...</Text>
+                </View>
+              ) : mentionUsers.length === 0 ? (
+                <View style={styles.modalLoadingContainer}>
+                  <Text style={styles.modalLoadingText}>
+                    {mentionSearchQuery.trim() ? 'No users found' : 'Type to search or select recommended'}
+                  </Text>
+                </View>
+              ) : (
+                mentionUsers.map((user) => {
+                  const avatarSource = user.photoURL
+                    ? { uri: user.photoURL }
+                    : require('../../../assets/default_avatar.png');
+                  const displayName = user.displayName || user.username || 'Unknown User';
+
+                  return (
+                    <TouchableOpacity
+                      key={user.uid}
+                      style={styles.modalUserRow}
+                      onPress={() => {
+                        setSelectedStoryMention(user);
+                        setIsStoryMentionPickerVisible(false);
+                      }}
+                    >
+                      <View style={styles.modalUserLeft}>
+                        <Image source={avatarSource} style={styles.modalUserAvatar} />
+                        <View>
+                          <Text style={styles.modalUserName}>{displayName}</Text>
+                          {user.username && (
+                            <Text style={styles.modalUserUsername}>@{user.username}</Text>
+                          )}
+                        </View>
+                      </View>
+                      
+                      <Ionicons name="chevron-forward" size={18} color="rgba(255, 255, 255, 0.3)" />
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    );
   };
 
   const handleReactionPress = (postId) => {
@@ -453,7 +654,7 @@ export default function HomeScreen() {
   const handlePostOptions = (postItem) => {
     const isOwner = postItem.userId === currentUser?.uid;
     if (isOwner) {
-      Alert.alert(
+      showAlert(
         'Post Options',
         'What would you like to do with this post?',
         [
@@ -469,7 +670,7 @@ export default function HomeScreen() {
         ]
       );
     } else {
-      Alert.alert(
+      showAlert(
         'Post Options',
         'What would you like to do with this post?',
         [
@@ -487,18 +688,18 @@ export default function HomeScreen() {
   };
 
   const confirmDeletePost = (postId) => {
-    Alert.alert(
+    showAlert(
       'Delete Post',
       'Are you sure you want to delete this post? This action cannot be undone.',
       [
         {
-          text: 'Cancel',
-          style: 'cancel'
-        },
-        {
           text: 'Delete',
           style: 'destructive',
           onPress: () => executeDeletePost(postId)
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
         }
       ]
     );
@@ -569,78 +770,107 @@ export default function HomeScreen() {
     </View>
   );
 
-  const renderStories = () => (
-    <View style={styles.storiesSection}>
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.storiesContainer}
+  const renderStories = () => {
+    const opacity = scrollAnim.interpolate({
+      inputRange: [-130, 0],
+      outputRange: [0, 1],
+      extrapolate: 'clamp',
+    });
+    
+    const translateY = scrollAnim.interpolate({
+      inputRange: [-130, 0],
+      outputRange: [-60, 0],
+      extrapolate: 'clamp',
+    });
+
+    return (
+      <Animated.View 
+        pointerEvents={headerHidden ? 'none' : 'auto'}
+        style={[
+          styles.storiesSection,
+          {
+            opacity: opacity,
+            transform: [{ translateY: translateY }],
+            position: 'absolute',
+            top: 72, // below top header
+            left: 0,
+            right: 0,
+            zIndex: 5,
+            backgroundColor: COLORS.background || '#1a0533',
+          }
+        ]}
       >
-        {stories.map((item) => {
-          if (item.isUser) {
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.storiesContainer}
+        >
+          {stories.map((item) => {
+            if (item.isUser) {
+              return (
+                <TouchableOpacity 
+                  key={item.id} 
+                  style={styles.storyWrapper} 
+                  onPress={handleAddStory}
+                  disabled={isUploadingStory}
+                >
+                  <View style={styles.userStoryOuter}>
+                    <View style={styles.userStoryInner}>
+                      {isUploadingStory ? (
+                        <ActivityIndicator size="small" color="#8b5cf6" />
+                      ) : (
+                        <Ionicons name="add" size={24} color="#8b5cf6" />
+                      )}
+                    </View>
+                  </View>
+                  <Text style={styles.storyName}>
+                    {isUploadingStory ? 'Uploading...' : item.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }
+
+            const imageSource = typeof item.avatar === 'number' || (item.avatar && typeof item.avatar === 'object')
+              ? item.avatar
+              : { uri: item.avatar || 'https://via.placeholder.com/150' };
+
             return (
               <TouchableOpacity 
                 key={item.id} 
-                style={styles.storyWrapper} 
-                onPress={handleAddStory}
-                disabled={isUploadingStory}
+                style={styles.storyWrapper}
+                onPress={() => navigation.navigate(SCREENS.STORY_VIEWER, { 
+                  storyUser: item.name,
+                  storyAvatar: item.avatar,
+                  storyUserId: item.id,
+                  storyMediaUrl: item.mediaUrl,
+                  allStories: item.stories || [],
+                  isOwnStory: item.isOwn || false,
+                  storyId: item.stories?.[0]?.id || null
+                })}
               >
-                <View style={styles.userStoryOuter}>
-                  <View style={styles.userStoryInner}>
-                    {isUploadingStory ? (
-                      <ActivityIndicator size="small" color="#8b5cf6" />
-                    ) : (
-                      <Ionicons name="add" size={24} color="#8b5cf6" />
-                    )}
+                <LinearGradient
+                  colors={item.borderColors}
+                  style={styles.storyRingGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <View style={styles.storyImageContainer}>
+                    <Image source={imageSource} style={styles.storyAvatar} />
                   </View>
-                </View>
-                <Text style={styles.storyName}>
-                  {isUploadingStory ? 'Uploading...' : item.name}
-                </Text>
+                </LinearGradient>
+                <Text style={styles.storyName} numberOfLines={1}>{item.name}</Text>
               </TouchableOpacity>
             );
-          }
-
-          const imageSource = typeof item.avatar === 'number' || (item.avatar && typeof item.avatar === 'object')
-            ? item.avatar
-            : { uri: item.avatar || 'https://via.placeholder.com/150' };
-
-          return (
-            <TouchableOpacity 
-              key={item.id} 
-              style={styles.storyWrapper}
-              onPress={() => navigation.navigate(SCREENS.STORY_VIEWER, { 
-                storyUser: item.name,
-                storyAvatar: item.avatar,
-                storyUserId: item.id,
-                storyMediaUrl: item.mediaUrl,
-                allStories: item.stories || [],
-                isOwnStory: item.isOwn || false,
-                storyId: item.stories?.[0]?.id || null
-              })}
-            >
-              <LinearGradient
-                colors={item.borderColors}
-                style={styles.storyRingGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <View style={styles.storyImageContainer}>
-                  <Image source={imageSource} style={styles.storyAvatar} />
-                </View>
-              </LinearGradient>
-              <Text style={styles.storyName} numberOfLines={1}>{item.name}</Text>
-            </TouchableOpacity>
-          );
-        })}
-        {storiesLoading && (
-          <View style={{ justifyContent: 'center', paddingHorizontal: 20 }}>
-            <ActivityIndicator size="small" color={COLORS.primary || '#8b5cf6'} />
-          </View>
-        )}
-      </ScrollView>
-    </View>
-  );
+          })}
+          {storiesLoading && (
+            <View style={{ justifyContent: 'center', paddingHorizontal: 20 }}>
+              <ActivityIndicator size="small" color={COLORS.primary || '#8b5cf6'} />
+            </View>
+          )}
+        </ScrollView>
+      </Animated.View>
+    );
+  };
 
   const renderPostItem = ({ item }) => {
     return (
@@ -651,9 +881,6 @@ export default function HomeScreen() {
             <Image source={item.user.avatar} style={styles.postAvatar} />
             <View style={styles.postInfo}>
               <Text style={styles.postUserName}>{item.user.name}</Text>
-              <View style={[styles.badgeContainer, { backgroundColor: `${item.user.circleColor}20`, borderColor: item.user.circleColor }]}>
-                <Text style={[styles.badgeText, { color: item.user.circleColor }]}>{item.user.circle}</Text>
-              </View>
             </View>
           </View>
           <TouchableOpacity onPress={() => handlePostOptions(item)}>
@@ -727,13 +954,21 @@ export default function HomeScreen() {
       }
     ]}>
       <StatusBar barStyle="light-content" />
+      
+      {/* Sticky Top VibeSpace Logo/Menu Header */}
       {renderHeader()}
+
+      {/* Dynamic Collapsible Stories Strip */}
+      {renderStories()}
       
       <FlatList
         data={posts}
         renderItem={renderPostItem}
         keyExtractor={(item) => item.id}
-        ListHeaderComponent={renderStories}
+        ListHeaderComponent={<View style={{ height: 182 }} />}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        progressViewOffset={182}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.feedScroll}
         ListEmptyComponent={
@@ -791,7 +1026,7 @@ export default function HomeScreen() {
                   onPress={() => handleSelectOption(true)}
                 >
                   <Ionicons name="camera-outline" size={22} color="#ffffff" style={styles.sheetOptionIcon} />
-                  <Text style={styles.sheetOptionText}>📷 Take Photo</Text>
+                  <Text style={styles.sheetOptionText}>Take Photo</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
@@ -799,7 +1034,7 @@ export default function HomeScreen() {
                   onPress={() => handleSelectOption(false)}
                 >
                   <Ionicons name="images-outline" size={22} color="#ffffff" style={styles.sheetOptionIcon} />
-                  <Text style={styles.sheetOptionText}>🖼️ Choose from Gallery</Text>
+                  <Text style={styles.sheetOptionText}>Choose from Gallery</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
@@ -807,7 +1042,7 @@ export default function HomeScreen() {
                   onPress={() => closeStorySheet()}
                 >
                   <Ionicons name="close-circle-outline" size={22} color={COLORS.danger || '#ef4444'} style={styles.sheetOptionIcon} />
-                  <Text style={[styles.sheetOptionText, { color: COLORS.danger || '#ef4444' }]}>❌ Cancel</Text>
+                  <Text style={[styles.sheetOptionText, { color: COLORS.danger || '#ef4444' }]}>Cancel</Text>
                 </TouchableOpacity>
               </Animated.View>
             </TouchableWithoutFeedback>
@@ -823,6 +1058,7 @@ export default function HomeScreen() {
           setIsStoryPreviewVisible(false);
           setSelectedStoryUri(null);
           setSelectedStorySong(null);
+          setSelectedStoryMention(null);
         }}
       >
         {selectedStoryUri && (
@@ -834,7 +1070,7 @@ export default function HomeScreen() {
             <View style={styles.previewDarkOverlay} />
             
             <View style={[styles.previewContent, { paddingTop: insets?.top || 0, paddingBottom: (insets?.bottom || 0) + 20 }]}>
-              {/* Top Close Button */}
+              {/* Top Header */}
               <View style={styles.previewHeader}>
                 <TouchableOpacity
                   style={styles.previewCloseBtn}
@@ -842,45 +1078,83 @@ export default function HomeScreen() {
                     setIsStoryPreviewVisible(false);
                     setSelectedStoryUri(null);
                     setSelectedStorySong(null);
+                    setSelectedStoryMention(null);
                   }}
                 >
                   <Ionicons name="close" size={28} color="#ffffff" />
                 </TouchableOpacity>
+
                 <Text style={styles.previewTitle}>Preview Story</Text>
                 <View style={{ width: 40 }} />
               </View>
 
-              {/* Centered Add Song / Song Overlay */}
+              {/* Vertical Stack for Action Buttons */}
+              <View style={styles.previewRightActions}>
+                {/* Music Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.headerActionCircle,
+                    selectedStorySong && styles.headerActionCircleActive
+                  ]}
+                  onPress={() => setIsStorySongPickerVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons 
+                    name={selectedStorySong ? "musical-notes" : "musical-notes-outline"} 
+                    size={20} 
+                    color="#ffffff" 
+                  />
+                </TouchableOpacity>
+
+                {/* Mention Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.headerActionCircle,
+                    selectedStoryMention && styles.headerActionCircleActive
+                  ]}
+                  onPress={() => setIsStoryMentionPickerVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons 
+                    name={selectedStoryMention ? "at" : "at-outline"} 
+                    size={20} 
+                    color="#ffffff" 
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* WYSIWYG Center Body */}
               <View style={styles.previewBody}>
-                {selectedStorySong ? (
-                  <View style={styles.previewSongContainer}>
+                {selectedStorySong && (
+                  <View style={styles.previewFloatingSticker}>
                     <SongOverlay
                       song={selectedStorySong}
                       onPress={() => setIsStorySongPickerVisible(true)}
                     />
                     <TouchableOpacity
-                      style={styles.previewRemoveSongBtn}
+                      style={styles.stickerRemoveBtn}
                       onPress={() => setSelectedStorySong(null)}
                     >
-                      <Ionicons name="close-circle" size={22} color="#ffffff" />
+                      <Ionicons name="close-circle" size={20} color="#ffffff" />
                     </TouchableOpacity>
                   </View>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.previewAddSongBtn}
-                    onPress={() => setIsStorySongPickerVisible(true)}
-                    activeOpacity={0.8}
-                  >
-                    <LinearGradient
-                      colors={['rgba(139, 92, 246, 0.65)', 'rgba(79, 110, 247, 0.65)']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.previewAddSongGradient}
+                )}
+
+                {selectedStoryMention && (
+                  <View style={styles.previewFloatingSticker}>
+                    <View style={styles.previewMentionBadge}>
+                      <Ionicons name="at" size={14} color="#ffffff" style={{ marginRight: 2 }} />
+                      <Text style={styles.previewMentionText}>
+                        {selectedStoryMention.displayName || selectedStoryMention.username}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.stickerRemoveBtn}
+                      onPress={() => setSelectedStoryMention(null)}
                     >
-                      <Ionicons name="musical-notes" size={20} color="#ffffff" style={{ marginRight: 8 }} />
-                      <Text style={styles.previewAddSongText}>Add a Song 🎵</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
+                      <Ionicons name="close-circle" size={20} color="#ffffff" />
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
 
@@ -921,6 +1195,8 @@ export default function HomeScreen() {
         }}
       />
 
+      {renderStoryMentionPickerModal()}
+
       {/* Mood Detector Toast */}
       {moodToast && (
         <View style={styles.moodToast}>
@@ -951,6 +1227,15 @@ export default function HomeScreen() {
           </View>
         </View>
       )}
+
+      {/* Custom Alert Modal */}
+      <CustomAlertModal
+        visible={customAlert.visible}
+        onClose={() => setCustomAlert(prev => ({ ...prev, visible: false }))}
+        title={customAlert.title}
+        message={customAlert.message}
+        buttons={customAlert.buttons}
+      />
     </View>
   );
 }
@@ -958,6 +1243,15 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: COLORS.background || '#1a0533',
+  },
+  topHeaderBlock: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    overflow: 'hidden',
     backgroundColor: COLORS.background || '#1a0533',
   },
   headerContainer: {
@@ -968,6 +1262,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: SIZES.spacingMd || 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(76, 40, 133, 0.4)', // Slightly transparent borders
+    backgroundColor: COLORS.background || '#1a0533',
+    zIndex: 10,
   },
   headerTitle: {
     fontSize: 22,
@@ -1009,6 +1305,7 @@ const styles = StyleSheet.create({
     paddingVertical: SIZES.spacingMd || 16,
     borderBottomWidth: 1.5,
     borderBottomColor: 'rgba(76, 40, 133, 0.3)',
+    backgroundColor: COLORS.background || '#1a0533',
   },
   storiesContainer: {
     paddingHorizontal: SIZES.spacingMd || 16,
@@ -1352,42 +1649,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
-  previewSongContainer: {
-    position: 'relative',
-    alignSelf: 'center',
-  },
-  previewRemoveSongBtn: {
-    position: 'absolute',
-    top: -10,
-    right: -10,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderRadius: 12,
-    padding: 2,
-    zIndex: 10,
-  },
-  previewAddSongBtn: {
-    borderRadius: 25,
-    overflow: 'hidden',
-    shadowColor: '#8b5cf6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  previewAddSongGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 25,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
-  },
-  previewAddSongText: {
-    color: '#ffffff',
-    fontSize: 15,
-    ...FONTS.bold,
-  },
   previewFooter: {
     paddingHorizontal: 20,
     alignItems: 'center',
@@ -1413,5 +1674,155 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     ...FONTS.bold,
+  },
+  previewMentionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+  },
+  previewMentionText: {
+    color: '#ffffff',
+    fontSize: 13,
+    ...FONTS.bold,
+  },
+  previewRightActions: {
+    position: 'absolute',
+    right: 16,
+    top: 90,
+    flexDirection: 'column',
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  headerActionCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 1.2,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  headerActionCircleActive: {
+    backgroundColor: '#8b5cf6',
+    borderColor: '#a78bfa',
+  },
+  previewFloatingSticker: {
+    position: 'relative',
+    alignSelf: 'center',
+    marginVertical: 10,
+  },
+  stickerRemoveBtn: {
+    position: 'absolute',
+    top: -10,
+    right: -10,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    borderRadius: 12,
+    padding: 2,
+    zIndex: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#16022b',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+    paddingBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  modalTitle: {
+    fontSize: 18,
+    ...FONTS.bold,
+    color: '#ffffff',
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalSearchWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    height: 48,
+    paddingHorizontal: 16,
+    margin: 16,
+  },
+  modalSearchIcon: {
+    marginRight: 10,
+  },
+  modalSearchInput: {
+    flex: 1,
+    color: '#ffffff',
+    fontSize: 14,
+    ...FONTS.regular,
+  },
+  modalListContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+  modalLoadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  modalLoadingText: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 13,
+    marginTop: 8,
+  },
+  modalUserRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  modalUserLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalUserAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    marginRight: 12,
+  },
+  modalUserName: {
+    fontSize: 14,
+    ...FONTS.bold,
+    color: '#ffffff',
+  },
+  modalUserUsername: {
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.4)',
+    marginTop: 2,
   },
 });

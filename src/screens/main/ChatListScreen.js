@@ -37,6 +37,7 @@ import { getUserFollowing, getRecommendedUsers } from '../../services/authServic
 import ChatListItem from '../../components/chat/ChatListItem';
 import EmptyState from '../../components/common/EmptyState';
 import SideDrawer from '../../components/common/SideDrawer';
+import CustomAlertModal from '../../components/common/CustomAlertModal';
 
 const { width } = Dimensions.get('window');
 
@@ -57,6 +58,23 @@ export default function ChatListScreen() {
   const [composeSearchText, setComposeSearchText] = useState('');
   const [contacts, setContacts] = useState([]);
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+
+  // Custom Alert State
+  const [customAlert, setCustomAlert] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: []
+  });
+
+  const showAlert = (title, message, buttons) => {
+    setCustomAlert({
+      visible: true,
+      title,
+      message,
+      buttons
+    });
+  };
 
   // Poll chats real-time
   useEffect(() => {
@@ -115,11 +133,10 @@ export default function ChatListScreen() {
   };
 
   const handleLeaveOrDelete = async (chat) => {
-    Alert.alert(
+    showAlert(
       chat.isGroup ? 'Leave Group' : 'Delete Chat',
       `Are you sure you want to ${chat.isGroup ? 'leave' : 'delete'} this chat?`,
       [
-        { text: 'Cancel', style: 'cancel' },
         {
           text: chat.isGroup ? 'Leave' : 'Delete',
           style: 'destructive',
@@ -133,7 +150,8 @@ export default function ChatListScreen() {
               Toast.show({ type: 'error', text1: 'Error', text2: err.message });
             }
           }
-        }
+        },
+        { text: 'Cancel', style: 'cancel' }
       ]
     );
   };
@@ -324,6 +342,15 @@ export default function ChatListScreen() {
         </Modal>
 
         <SideDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+
+        {/* Custom Alert Modal */}
+        <CustomAlertModal
+          visible={customAlert.visible}
+          onClose={() => setCustomAlert(prev => ({ ...prev, visible: false }))}
+          title={customAlert.title}
+          message={customAlert.message}
+          buttons={customAlert.buttons}
+        />
       </View>
   );
 }

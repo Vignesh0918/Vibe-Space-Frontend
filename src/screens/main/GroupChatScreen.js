@@ -11,7 +11,7 @@
  * - Frosted input bar with attachment (+), emoji, and gradient send button.
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -24,6 +24,7 @@ import {
   StatusBar,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -106,6 +107,23 @@ export default function GroupChatScreen() {
   const insets = useSafeAreaInsets();
   const flatListRef = useRef(null);
   const [messageText, setMessageText] = useState('');
+
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setIsKeyboardVisible(true)
+    );
+    const hideSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setIsKeyboardVisible(false)
+    );
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const handleSend = () => {
     if (!messageText.trim()) return;
@@ -229,7 +247,7 @@ export default function GroupChatScreen() {
   /* ---------- input bar ---------- */
 
   const renderInputBar = () => (
-    <View style={[styles.inputBar, { paddingBottom: insets.bottom + 8 }]}>
+    <View style={[styles.inputBar, { paddingBottom: isKeyboardVisible ? 8 : insets.bottom + 8 }]}>
       <TouchableOpacity style={styles.attachBtn}>
         <Ionicons name="add" size={26} color="#ffffff" />
       </TouchableOpacity>
@@ -275,8 +293,8 @@ export default function GroupChatScreen() {
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 60}
       >
         <FlatList
           ref={flatListRef}

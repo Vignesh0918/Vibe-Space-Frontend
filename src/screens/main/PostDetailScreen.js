@@ -21,6 +21,7 @@ import {
   StatusBar,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,20 +31,38 @@ import Toast from 'react-native-toast-message';
 
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
 import { auth } from '../../services/firebase';
-import { 
-  getPostDetails, 
-  getComments, 
-  addComment, 
-  toggleReaction, 
+import {
+  getPostDetails,
+  getComments,
+  addComment,
+  toggleReaction,
   bookmarkPost,
   deletePost
 } from '../../services/postService';
 import PostCard from '../../components/feed/PostCard';
+import CustomAlertModal from '../../components/common/CustomAlertModal';
 
 export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const insets = useSafeAreaInsets();
+
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setIsKeyboardVisible(true)
+    );
+    const hideSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setIsKeyboardVisible(false)
+    );
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const { postId } = route.params || {};
   const currentUser = auth.currentUser;
@@ -61,6 +80,23 @@ export default function PostDetailScreen() {
   const [isReactionsModalVisible, setIsReactionsModalVisible] = useState(false);
   const [selectedReactionUsers, setSelectedReactionUsers] = useState([]);
   const [selectedReactionEmoji, setSelectedReactionEmoji] = useState('');
+
+  // Custom Alert State
+  const [customAlert, setCustomAlert] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: []
+  });
+
+  const showAlert = (title, message, buttons) => {
+    setCustomAlert({
+      visible: true,
+      title,
+      message,
+      buttons
+    });
+  };
 
   const fetchPostDetails = async () => {
     try {
@@ -103,7 +139,7 @@ export default function PostDetailScreen() {
 
   const handleReact = async (id, emoji) => {
     const originalPost = post;
-    
+
     // Optimistic UI update
     const nextReactions = { ...post.reactions };
     let currentEmojiUsers = [...(nextReactions[emoji] || [])];
@@ -117,10 +153,10 @@ export default function PostDetailScreen() {
 
     try {
       const res = await toggleReaction(
-        postId, 
-        emoji, 
-        currentUserId, 
-        currentUser?.displayName || 'User', 
+        postId,
+        emoji,
+        currentUserId,
+        currentUser?.displayName || 'User',
         currentUser?.photoURL || ''
       );
       if (!res.success) {
@@ -160,10 +196,10 @@ export default function PostDetailScreen() {
 
     try {
       const res = await addComment(
-        postId, 
-        currentUserId, 
-        currentUser?.displayName || 'Alex Vibe', 
-        currentUser?.photoURL || '', 
+        postId,
+        currentUserId,
+        currentUser?.displayName || 'Alex Vibe',
+        currentUser?.photoURL || '',
         text
       );
       if (res.success) {
@@ -200,7 +236,7 @@ export default function PostDetailScreen() {
   const handlePostOptions = (postItem) => {
     const isOwner = postItem.userId === currentUserId;
     if (isOwner) {
-      Alert.alert(
+      showAlert(
         'Post Options',
         'What would you like to do with this post?',
         [
@@ -216,7 +252,7 @@ export default function PostDetailScreen() {
         ]
       );
     } else {
-      Alert.alert(
+      showAlert(
         'Post Options',
         'What would you like to do with this post?',
         [
@@ -234,18 +270,18 @@ export default function PostDetailScreen() {
   };
 
   const confirmDeletePost = () => {
-    Alert.alert(
+    showAlert(
       'Delete Post',
       'Are you sure you want to delete this post? This action cannot be undone.',
       [
         {
-          text: 'Cancel',
-          style: 'cancel'
-        },
-        {
           text: 'Delete',
           style: 'destructive',
           onPress: () => executeDeletePost()
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
         }
       ]
     );
@@ -283,7 +319,7 @@ export default function PostDetailScreen() {
     const now = new Date();
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / (1000 * 60));
-    
+
     if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins}m ago`;
     const diffHours = Math.floor(diffMins / 60);
@@ -293,9 +329,9 @@ export default function PostDetailScreen() {
 
   const renderComment = ({ item }) => (
     <View style={styles.commentRow}>
-      <Image 
-        source={item.userAvatar ? { uri: item.userAvatar } : require('../../../assets/default_avatar.png')} 
-        style={styles.commentAvatar} 
+      <Image
+        source={item.userAvatar ? { uri: item.userAvatar } : require('../../../assets/default_avatar.png')}
+        style={styles.commentAvatar}
       />
       <View style={styles.commentBubble}>
         <View style={styles.commentHeaderRow}>
@@ -308,7 +344,7 @@ export default function PostDetailScreen() {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: isKeyboardVisible ? 0 : insets.bottom }]}>
       <StatusBar barStyle="light-content" />
 
       {/* Header */}
@@ -325,10 +361,10 @@ export default function PostDetailScreen() {
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
       ) : (
-        <KeyboardAvoidingView 
-          style={styles.flex} 
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 64}
         >
           <FlatList
             data={comments}
@@ -343,7 +379,7 @@ export default function PostDetailScreen() {
                   onBookmark={handleBookmark}
                   onOptions={handlePostOptions}
                 />
-                
+
                 {/* Visual grid representation of all active reaction counts */}
                 {post.reactions && Object.keys(post.reactions).length > 0 && (
                   <View style={styles.reactionsBreakdown}>
@@ -450,6 +486,15 @@ export default function PostDetailScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Custom Alert Modal */}
+      <CustomAlertModal
+        visible={customAlert.visible}
+        onClose={() => setCustomAlert(prev => ({ ...prev, visible: false }))}
+        title={customAlert.title}
+        message={customAlert.message}
+        buttons={customAlert.buttons}
+      />
     </View>
   );
 }

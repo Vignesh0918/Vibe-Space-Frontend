@@ -72,6 +72,10 @@ export function CirclesStack() {
       <Stack.Screen name={SCREENS.CIRCLES} component={CirclesScreen} />
       <Stack.Screen name={SCREENS.CIRCLE_DETAIL} component={CircleDetailScreen} />
       <Stack.Screen name={SCREENS.CREATE_CIRCLE} component={CreateCircleScreen} />
+      <Stack.Screen name={SCREENS.USER_PROFILE} component={UserProfileScreen} />
+      <Stack.Screen name={SCREENS.POST_DETAIL} component={PostDetailScreen} />
+      <Stack.Screen name={SCREENS.FOLLOWERS} component={FollowersScreen} />
+      <Stack.Screen name={SCREENS.FOLLOWING} component={FollowingScreen} />
     </Stack.Navigator>
   );
 }
@@ -103,6 +107,7 @@ export function ProfileStack() {
       <Stack.Screen name={SCREENS.USER_PROFILE} component={UserProfileScreen} />
       <Stack.Screen name={SCREENS.FOLLOWERS} component={FollowersScreen} />
       <Stack.Screen name={SCREENS.FOLLOWING} component={FollowingScreen} />
+      <Stack.Screen name={SCREENS.POST_DETAIL} component={PostDetailScreen} />
     </Stack.Navigator>
   );
 }

@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import { auth } from './firebase';
 
 // Development Ngrok URL or production endpoint constant
-//const API_URL = 'https://luann-interprofessional-verbally.ngrok-free.dev';
+//const API_URL = 'https://tawanda-intercortical-viperishly.ngrok-free.dev';
 const API_URL = 'https://vibe-space-production.up.railway.app';
 
 const apiClient = axios.create({

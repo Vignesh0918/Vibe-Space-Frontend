@@ -22,6 +22,7 @@ import {
   Alert,
   Modal,
   Clipboard,
+  Keyboard,
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -33,18 +34,19 @@ import { Audio } from 'expo-av';
 
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
 import { auth } from '../../services/firebase';
-import { 
-  getChatDetails, 
-  listenToMessages, 
-  sendMessage, 
-  markMessagesRead, 
-  reactToMessage, 
-  deleteMessage, 
-  editMessage 
+import {
+  getChatDetails,
+  listenToMessages,
+  sendMessage,
+  markMessagesRead,
+  reactToMessage,
+  deleteMessage,
+  editMessage
 } from '../../services/chatService';
 import ChatBubble from '../../components/chat/ChatBubble';
 import ExpiryBadge from '../../components/chat/ExpiryBadge';
 import { getSmartReplies } from '../../services/aiService';
+import CustomAlertModal from '../../components/common/CustomAlertModal';
 
 const { width } = Dimensions.get('window');
 
@@ -56,6 +58,23 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const flatListRef = useRef(null);
 
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setIsKeyboardVisible(true)
+    );
+    const hideSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setIsKeyboardVisible(false)
+    );
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
   const { chatId, chatName = 'Chat' } = route.params || {};
   const currentUserId = auth.currentUser?.uid;
 
@@ -66,7 +85,7 @@ export default function ChatScreen() {
   const [isSending, setIsSending] = useState(false);
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
-  
+
   // Message interaction modals
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [isActionModalVisible, setIsActionModalVisible] = useState(false);
@@ -77,6 +96,23 @@ export default function ChatScreen() {
   const [smartReplies, setSmartReplies] = useState([]);
   const [isLoadingReplies, setIsLoadingReplies] = useState(false);
   const smartReplyTimerRef = useRef(null);
+
+  // Custom Alert State
+  const [customAlert, setCustomAlert] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: []
+  });
+
+  const showAlert = (title, message, buttons) => {
+    setCustomAlert({
+      visible: true,
+      title,
+      message,
+      buttons
+    });
+  };
 
   // Fetch chat room details
   useEffect(() => {
@@ -100,13 +136,13 @@ export default function ChatScreen() {
     const unsubscribe = listenToMessages(chatId, (newMessages) => {
       setMessages(newMessages);
       // Mark read on new message receipt
-      markMessagesRead(chatId, currentUserId).catch(() => {});
+      markMessagesRead(chatId, currentUserId).catch(() => { });
     });
 
     return () => {
       unsubscribe();
       // Also mark as read on unmount
-      markMessagesRead(chatId, currentUserId).catch(() => {});
+      markMessagesRead(chatId, currentUserId).catch(() => { });
     };
   }, [chatId, currentUserId]);
 
@@ -204,14 +240,27 @@ export default function ChatScreen() {
   };
 
   const showAttachmentMenu = () => {
-    Alert.alert(
-      'Share media',
-      'Choose photos source',
+    showAlert(
+      'Select Image Source',
+      'Choose how you want to add a photo to your chat:',
       [
-        { text: 'Camera', onPress: () => handleAttachImage(true) },
-        { text: 'Gallery', onPress: () => handleAttachImage(false) },
-        { text: 'Cancel', style: 'cancel' }
-      ]
+        {
+          text: 'Take Photo',
+          icon: 'camera-outline',
+          onPress: () => handleAttachImage(true),
+        },
+        {
+          text: 'Choose from Gallery',
+          icon: 'image-outline',
+          onPress: () => handleAttachImage(false),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          icon: 'close-outline',
+        },
+      ],
+      'vertical'
     );
   };
 
@@ -294,7 +343,7 @@ export default function ChatScreen() {
     const msgId = selectedMessage._id || selectedMessage.id;
     setIsActionModalVisible(false);
     setIsEditingMode(false);
-    
+
     try {
       const res = await editMessage(chatId, msgId, editText.trim());
       if (!res.success) {
@@ -310,14 +359,13 @@ export default function ChatScreen() {
     const msgId = selectedMessage._id || selectedMessage.id;
     setIsActionModalVisible(false);
 
-    Alert.alert(
+    showAlert(
       'Delete Message',
       'Are you sure you want to delete this message?',
       [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive', 
+        {
+          text: 'Delete',
+          style: 'destructive',
           onPress: async () => {
             try {
               const res = await deleteMessage(chatId, msgId);
@@ -327,8 +375,9 @@ export default function ChatScreen() {
             } catch (err) {
               Toast.show({ type: 'error', text1: 'Delete Error', text2: err.message });
             }
-          } 
-        }
+          }
+        },
+        { text: 'Cancel', style: 'cancel' }
       ]
     );
   };
@@ -339,8 +388,8 @@ export default function ChatScreen() {
 
   // Header render
   const renderHeader = () => {
-    const avatarSource = otherUser?.photoURL 
-      ? { uri: otherUser.photoURL } 
+    const avatarSource = otherUser?.photoURL
+      ? { uri: otherUser.photoURL }
       : null;
 
     return (
@@ -369,7 +418,7 @@ export default function ChatScreen() {
           <View style={styles.headerInfo}>
             <Text style={styles.headerName} numberOfLines={1}>{chatName}</Text>
             <Text style={styles.headerSub}>
-              {chatDetails?.isGroup 
+              {chatDetails?.isGroup
                 ? `${chatDetails?.participantDetails?.length || 0} members`
                 : (isOnline ? 'Online' : 'Offline')}
             </Text>
@@ -413,7 +462,8 @@ export default function ChatScreen() {
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 60}
       >
         <FlatList
           ref={flatListRef}
@@ -459,7 +509,7 @@ export default function ChatScreen() {
         )}
 
         {/* Input Bar */}
-        <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <View style={[styles.inputBar, { paddingBottom: isKeyboardVisible ? 12 : Math.max(insets.bottom, 12) }]}>
           <TouchableOpacity style={styles.attachBtn} onPress={showAttachmentMenu}>
             <Ionicons name="add" size={26} color="#ffffff" />
           </TouchableOpacity>
@@ -474,16 +524,16 @@ export default function ChatScreen() {
               multiline
             />
             {/* Hold-to-Talk Recording Mic */}
-            <TouchableOpacity 
+            <TouchableOpacity
               activeOpacity={0.6}
               onPressIn={startRecording}
               onPressOut={stopRecording}
               style={[styles.micBtn, isRecording && styles.micBtnActive]}
             >
-              <Ionicons 
-                name={isRecording ? 'mic' : 'mic-outline'} 
-                size={22} 
-                color={isRecording ? '#ffffff' : COLORS.textMuted} 
+              <Ionicons
+                name={isRecording ? 'mic' : 'mic-outline'}
+                size={22}
+                color={isRecording ? '#ffffff' : COLORS.textMuted}
               />
             </TouchableOpacity>
           </View>
@@ -515,7 +565,7 @@ export default function ChatScreen() {
           animationType="fade"
           onRequestClose={() => setIsActionModalVisible(false)}
         >
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.modalOverlay}
             activeOpacity={1}
             onPress={() => {
@@ -527,7 +577,7 @@ export default function ChatScreen() {
               {/* Reactions Bar */}
               <View style={styles.reactionsBar}>
                 {REACTIONS_LIST.map((emoji) => (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     key={emoji}
                     onPress={() => handleToggleReaction(emoji)}
                     style={styles.reactionBtn}
@@ -573,7 +623,7 @@ export default function ChatScreen() {
         animationType="slide"
         onRequestClose={() => setIsEditingMode(false)}
       >
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.editModalContainer}
         >
@@ -587,22 +637,31 @@ export default function ChatScreen() {
               autoFocus
             />
             <View style={styles.editActionsRow}>
-              <TouchableOpacity 
-                style={styles.editBtnCancel} 
-                onPress={() => setIsEditingMode(false)}
-              >
-                <Text style={styles.editBtnTextCancel}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.editBtnSave}
                 onPress={handleSaveEdit}
               >
                 <Text style={styles.editBtnTextSave}>Save</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.editBtnCancel}
+                onPress={() => setIsEditingMode(false)}
+              >
+                <Text style={styles.editBtnTextCancel}>Cancel</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Custom Alert Modal */}
+      <CustomAlertModal
+        visible={customAlert.visible}
+        onClose={() => setCustomAlert(prev => ({ ...prev, visible: false }))}
+        title={customAlert.title}
+        message={customAlert.message}
+        buttons={customAlert.buttons}
+      />
     </View>
   );
 }
@@ -894,7 +953,6 @@ const styles = StyleSheet.create({
   editBtnCancel: {
     paddingVertical: 10,
     paddingHorizontal: 16,
-    marginRight: 10,
   },
   editBtnTextCancel: {
     color: COLORS.textMuted,
@@ -905,6 +963,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 20,
+    marginRight: 10,
   },
   editBtnTextSave: {
     color: '#ffffff',

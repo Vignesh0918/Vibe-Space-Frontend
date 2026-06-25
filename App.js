@@ -7,7 +7,12 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { AppState, StatusBar, StyleSheet, View, Text, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import { AppState, StatusBar, StyleSheet, View, Text, TouchableOpacity, ScrollView, Platform, LogBox } from 'react-native';
+
+LogBox.ignoreLogs([
+  'Expo AV has been deprecated',
+]);
+
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';

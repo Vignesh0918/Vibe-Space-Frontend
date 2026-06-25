@@ -112,9 +112,6 @@ export default function PostCard({ post, currentUserId, onReact, onBookmark, onO
           )}
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{userName}</Text>
-            <View style={[styles.badge, { backgroundColor: `${circleDetails.color}15`, borderColor: circleDetails.color }]}>
-              <Text style={[styles.badgeText, { color: circleDetails.color }]}>{circleDetails.name}</Text>
-            </View>
           </View>
         </TouchableOpacity>
 

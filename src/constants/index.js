@@ -105,6 +105,6 @@ export const SCREENS = {
 export const FEED_PAGE_SIZE = 10;
 export const CHAT_PAGE_SIZE = 20;
 export const SEARCH_DEBOUNCE_MS = 400;
-export const STORY_DURATION_MS = 5000;
+export const STORY_DURATION_MS = 20000;
 export const VOICE_MAX_DURATION_S = 60;
 

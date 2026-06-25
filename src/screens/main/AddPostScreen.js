@@ -14,22 +14,23 @@
  *   Tapping a thumbnail instantly updates the main viewfinder background image.
  */
 
-import React, { useState } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  TextInput, 
-  Image, 
-  ScrollView, 
-  TouchableOpacity, 
+import React, { useState, useEffect } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TextInput,
+  Image,
+  ScrollView,
+  TouchableOpacity,
   ImageBackground,
   Dimensions,
   StatusBar,
   KeyboardAvoidingView,
   Platform,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { useSelector } from 'react-redux';
@@ -44,6 +45,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
 import { SCREENS } from '../../constants';
+import CustomAlertModal from '../../components/common/CustomAlertModal';
 
 const { width, height } = Dimensions.get('window');
 
@@ -85,19 +87,52 @@ export default function AddPostScreen() {
 
   const currentUser = useSelector((state) => state.auth.user);
 
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setIsKeyboardVisible(true)
+    );
+    const hideSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setIsKeyboardVisible(false)
+    );
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
   // State Management
-  const [selectedImage, setSelectedImage] = useState(GALLERY_IMAGES[0]);
+  const [selectedImage, setSelectedImage] = useState(null);
   const [vibeText, setVibeText] = useState('');
   const [selectedCircle, setSelectedCircle] = useState('friends');
   const [songText, setSongText] = useState('');
-  const [isFlashOn, setIsFlashOn] = useState(false);
-  const [isTimerActive, setIsTimerActive] = useState(false);
-  const [cameraFacingFront, setCameraFacingFront] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
 
   // AI Caption State
   const [isAILoading, setIsAILoading] = useState(false);
   const [aiCaptions, setAiCaptions] = useState(null); // { caption, hashtags, mood, alt_captions }
+
+  // Custom Alert State
+  const [customAlert, setCustomAlert] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    buttons: [],
+    layout: 'horizontal'
+  });
+
+  const showAlert = (title, message, buttons, layout = 'horizontal') => {
+    setCustomAlert({
+      visible: true,
+      title,
+      message,
+      buttons,
+      layout
+    });
+  };
 
   const circles = [
     { id: 'friends', label: 'Friends', icon: 'people-outline', color: COLORS.circles.friends || '#10b981' },
@@ -115,23 +150,27 @@ export default function AddPostScreen() {
   };
 
   const handleCameraThumbnailPress = () => {
-    Alert.alert(
+    showAlert(
       'Select Image Source',
       'Choose how you want to add a photo to your post:',
       [
         {
-          text: '📷 Take Photo',
+          text: 'Take Photo',
+          icon: 'camera-outline',
           onPress: () => launchImagePicker(true),
         },
         {
-          text: '🖼️ Choose from Gallery',
+          text: 'Choose from Gallery',
+          icon: 'image-outline',
           onPress: () => launchImagePicker(false),
         },
         {
           text: 'Cancel',
           style: 'cancel',
+          icon: 'close-outline',
         },
-      ]
+      ],
+      'vertical'
     );
   };
 
@@ -174,6 +213,11 @@ export default function AddPostScreen() {
 
   const handlePost = async () => {
     if (isPosting) return;
+
+    if (!selectedImage) {
+      Toast.show({ type: 'error', text1: 'Photo Required', text2: 'Please select or take a photo first!' });
+      return;
+    }
 
     setIsPosting(true);
     try {
@@ -240,12 +284,12 @@ export default function AddPostScreen() {
         userAvatar,
         userId,
       };
- 
+
       const response = await createPost(postPayload);
       if (response.success) {
         Toast.show({ type: 'success', text1: 'Success', text2: 'Post shared successfully!' });
         setVibeText('');
-        setSelectedImage(GALLERY_IMAGES[0]);
+        setSelectedImage(null);
         setAiCaptions(null);
         setSongText('');
         navigation.navigate(SCREENS.HOME_TAB, { screen: SCREENS.HOME });
@@ -274,6 +318,11 @@ export default function AddPostScreen() {
     setIsAILoading(true);
     setAiCaptions(null);
     try {
+      if (!selectedImage) {
+        Toast.show({ type: 'error', text1: 'Photo Required', text2: 'Please select a photo first to generate a caption!' });
+        setIsAILoading(false);
+        return;
+      }
       let base64Data = '';
       let mimeType = 'image/jpeg';
       let localUri = '';
@@ -336,12 +385,13 @@ export default function AddPostScreen() {
   };
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={styles.keyboardContainer}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 64}
     >
-      <ImageBackground 
-        source={selectedImage} 
+      <ImageBackground
+        source={selectedImage || undefined}
         style={[styles.backgroundViewfinder]}
         resizeMode="cover"
       >
@@ -350,17 +400,17 @@ export default function AddPostScreen() {
 
         <View style={[
           styles.contentWrapper,
-          { 
+          {
             paddingTop: insets.top,
-            paddingBottom: insets.bottom + 80 // offset for navigation tabbar
+            paddingBottom: isKeyboardVisible ? 0 : insets.bottom + 80 // offset for navigation tabbar
           }
         ]}>
           <StatusBar barStyle="light-content" />
 
           {/* Top Header */}
           <View style={styles.header}>
-            <TouchableOpacity 
-              style={styles.headerIconButton} 
+            <TouchableOpacity
+              style={styles.headerIconButton}
               onPress={() => navigation.goBack()}
             >
               <Ionicons name="close" size={28} color="#ffffff" />
@@ -368,7 +418,7 @@ export default function AddPostScreen() {
 
             <Text style={styles.headerTitle}>Post</Text>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               activeOpacity={0.8}
               onPress={handlePost}
               style={styles.postButtonTouch}
@@ -389,52 +439,28 @@ export default function AddPostScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Camera Floating controls absolutely positioned over the viewfinder */}
-          <View style={styles.floatingControlsContainer}>
-            <TouchableOpacity 
-              style={styles.controlCircle}
-              onPress={() => setCameraFacingFront(!cameraFacingFront)}
-            >
-              <Ionicons name="sync-outline" size={20} color="#ffffff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.controlCircle, isFlashOn && styles.controlCircleActive]}
-              onPress={() => setIsFlashOn(!isFlashOn)}
-            >
-              <Ionicons name={isFlashOn ? "flash" : "flash-outline"} size={20} color={isFlashOn ? "#ffdf00" : "#ffffff"} />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.controlCircle, isTimerActive && styles.controlCircleActive]}
-              onPress={() => setIsTimerActive(!isTimerActive)}
-            >
-              <Ionicons name="stopwatch-outline" size={20} color={isTimerActive ? COLORS.primary : "#ffffff"} />
-            </TouchableOpacity>
-          </View>
-
           {/* Body Section with scrollable content */}
-          <ScrollView 
+          <ScrollView
             showsVerticalScrollIndicator={false}
             style={{ flex: 1 }}
             contentContainerStyle={styles.scrollBody}
           >
-            {/* Song Pill / Overlay */}
-            <TouchableOpacity 
-              activeOpacity={0.8}
-              onPress={handleAddSong}
-              style={styles.songPill}
-            >
-              <Ionicons name="musical-notes-outline" size={16} color="#8b5cf6" style={{ marginRight: 6 }} />
-              <Text style={styles.songPillText}>{songText || 'Add a Song'}</Text>
-            </TouchableOpacity>
+            <View style={{ marginTop: 24 }} />
+
+            {!selectedImage && (
+              <View style={styles.placeholderArea}>
+                <Ionicons name="image-outline" size={48} color="rgba(255, 255, 255, 0.25)" />
+                <Text style={styles.placeholderText}>No photo selected</Text>
+                <Text style={styles.placeholderSubtext}>Tap the button below to select media</Text>
+              </View>
+            )}
 
             {/* Frosted Details Card */}
             <View style={styles.frostedCard}>
               <View style={styles.inputRow}>
-                <Image 
-                  source={currentUser?.photoURL ? { uri: currentUser.photoURL } : require('../../../assets/default_avatar.png')} 
-                  style={styles.userAvatar} 
+                <Image
+                  source={currentUser?.photoURL ? { uri: currentUser.photoURL } : require('../../../assets/default_avatar.png')}
+                  style={styles.userAvatar}
                 />
                 <TextInput
                   placeholder="What's the vibe?"
@@ -482,14 +508,14 @@ export default function AddPostScreen() {
               )}
 
               {/* Presets/Hashtags Row */}
-              <ScrollView 
-                horizontal 
+              <ScrollView
+                horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.tagsContainer}
               >
                 {PRESET_TAGS.map(tag => (
-                  <TouchableOpacity 
-                    key={tag.id} 
+                  <TouchableOpacity
+                    key={tag.id}
                     style={styles.tagCapsule}
                     onPress={() => handleTagPress(tag.label)}
                   >
@@ -499,88 +525,41 @@ export default function AddPostScreen() {
               </ScrollView>
             </View>
 
-            {/* Choose Circle Grid/Panel */}
-            <View style={styles.circleSelectorPanel}>
-              <Text style={styles.circlePanelTitle}>Choose Circle</Text>
-              
-              <View style={styles.circleRow}>
-                {circles.map(circle => {
-                  const isSelected = selectedCircle === circle.id;
-                  return (
-                    <TouchableOpacity
-                      key={circle.id}
-                      activeOpacity={0.8}
-                      onPress={() => setSelectedCircle(circle.id)}
-                      style={styles.circleItem}
-                    >
-                      <View style={[
-                        styles.circleIconContainer, 
-                        isSelected && { 
-                          borderColor: circle.color, 
-                          borderWidth: 1.5,
-                          padding: 3
-                        }
-                      ]}>
-                        <View style={[
-                          styles.circleIconInner, 
-                          { backgroundColor: `${circle.color}15` },
-                          isSelected && {
-                            borderColor: circle.color,
-                            borderWidth: 1.5,
-                            width: 40,
-                            height: 40,
-                            borderRadius: 20
-                          }
-                        ]}>
-                          <Ionicons name={circle.icon} size={isSelected ? 18 : 22} color={circle.color} />
-                        </View>
-                      </View>
-                      <Text style={[styles.circleLabel, isSelected && { color: circle.color, ...FONTS.bold }]}>
-                        {circle.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
+            {/* Choose Circle section removed, defaults to Friends */}
           </ScrollView>
 
-          {/* Gallery Media Strip pinned to the bottom */}
-          <View style={styles.gallerySection}>
-            <ScrollView 
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.galleryScroll}
+          {/* Bottom Action Area instead of presets gallery */}
+          <View style={styles.bottomActionSection}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.selectPhotoButton}
+              onPress={handleCameraThumbnailPress}
             >
-              {/* Camera Trigger Thumbnail - dashed square outline */}
-              <TouchableOpacity 
-                activeOpacity={0.8}
-                style={styles.cameraThumbnail}
-                onPress={handleCameraThumbnailPress}
+              <LinearGradient
+                colors={['#8b5cf6', '#4f6ef7']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.selectPhotoGradient}
               >
-                <Ionicons name="camera-outline" size={24} color={COLORS.primary} />
-              </TouchableOpacity>
-
-              {/* Actual image list */}
-              {GALLERY_IMAGES.map((img, index) => {
-                const isSelected = selectedImage === img;
-                return (
-                  <TouchableOpacity 
-                    key={index} 
-                    activeOpacity={0.9}
-                    onPress={() => setSelectedImage(img)}
-                    style={[styles.galleryImageTouch, isSelected && styles.galleryImageSelected]}
-                  >
-                    <Image source={img} style={styles.galleryThumbnailImage} />
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                <Ionicons name="camera" size={20} color="#ffffff" style={{ marginRight: 8 }} />
+                <Text style={styles.selectPhotoText}>
+                  {selectedImage ? 'Change Photo' : 'Select Photo / Take Photo'}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
         </View>
       </ImageBackground>
- 
+
       {/* Song picker removed */}
+      <CustomAlertModal
+        visible={customAlert.visible}
+        onClose={() => setCustomAlert(prev => ({ ...prev, visible: false }))}
+        title={customAlert.title}
+        message={customAlert.message}
+        buttons={customAlert.buttons}
+        layout={customAlert.layout}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -640,35 +619,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingBottom: 40,
   },
-  floatingControlsContainer: {
-    position: 'absolute',
-    right: 16,
-    top: 76, // push below the header
-    zIndex: 100,
-    alignItems: 'center',
-  },
-  controlCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(26, 5, 51, 0.65)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(167, 139, 250, 0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 14,
-    shadowColor: '#8b5cf6',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  controlCircleActive: {
-    backgroundColor: 'rgba(139, 92, 246, 0.45)',
-    borderColor: '#8b5cf6',
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
-  },
+
   songPill: {
     alignSelf: 'center',
     flexDirection: 'row',
@@ -825,41 +776,56 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted || '#a78bfa',
     ...FONTS.medium,
   },
-  gallerySection: {
-    paddingVertical: 14,
+  bottomActionSection: {
+    paddingVertical: 18,
+    paddingHorizontal: 20,
     backgroundColor: 'rgba(15, 4, 32, 0.85)',
     borderTopWidth: 1.5,
     borderTopColor: 'rgba(167, 139, 250, 0.18)',
-  },
-  galleryScroll: {
-    paddingHorizontal: SIZES.spacingMd || 16,
-  },
-  cameraThumbnail: {
-    width: 64,
-    height: 64,
-    borderRadius: 8, // dashed square outline
-    borderWidth: 1.5,
-    borderColor: COLORS.primary,
-    borderStyle: 'dashed',
-    justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10,
-    backgroundColor: 'rgba(79, 110, 247, 0.08)',
+    justifyContent: 'center',
   },
-  galleryImageTouch: {
-    width: 64,
-    height: 64,
-    borderRadius: 8, // square preview thumbnail matching mockup
-    marginRight: 10,
-    overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-  },
-  galleryImageSelected: {
-    borderColor: COLORS.primary || '#4f6ef7',
-  },
-  galleryThumbnailImage: {
+  selectPhotoButton: {
     width: '100%',
-    height: '100%',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#8b5cf6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  selectPhotoGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 24,
+  },
+  selectPhotoText: {
+    color: '#ffffff',
+    fontSize: 15,
+    ...FONTS.bold,
+  },
+  placeholderArea: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 30,
+    marginBottom: 20,
+  },
+  placeholderText: {
+    color: '#ffffff',
+    fontSize: 16,
+    ...FONTS.bold,
+    marginTop: 8,
+    opacity: 0.8,
+  },
+  placeholderSubtext: {
+    color: COLORS.textMuted || '#a78bfa',
+    fontSize: 12,
+    ...FONTS.regular,
+    textAlign: 'center',
+    marginTop: 4,
+    opacity: 0.6,
   },
 });

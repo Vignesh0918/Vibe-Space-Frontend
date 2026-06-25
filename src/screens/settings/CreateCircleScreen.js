@@ -12,7 +12,7 @@
  * - "Create Circle" bottom lavender gradient button.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -22,7 +22,10 @@ import {
   TextInput,
   Image,
   StatusBar,
-  ActivityIndicator
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { useDispatch, useSelector } from 'react-redux';
@@ -33,6 +36,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, FONTS, SHADOWS } from '../../constants/theme';
+import apiClient from '../../config/api';
 
 const EMOJIS = [
   { emoji: '🚀', id: 'rocket' },
@@ -58,11 +62,7 @@ const THEMES = [
   { color: '#718096', id: 'grey' },
 ];
 
-const FRIENDS = [
-  { id: 'f1', name: 'Arjun K.', avatar: require('../../../assets/default_avatar.png') },
-  { id: 'f2', name: 'Priya S.', avatar: require('../../../assets/default_avatar.png') },
-  { id: 'f3', name: 'Rohan M.', avatar: require('../../../assets/default_avatar.png') },
-];
+const DEFAULT_AVATAR = require('../../../assets/default_avatar.png');
 
 export default function CreateCircleScreen() {
   const navigation = useNavigation();
@@ -70,18 +70,76 @@ export default function CreateCircleScreen() {
   const dispatch = useDispatch();
   const currentUser = useSelector((state) => state.auth.user);
 
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setIsKeyboardVisible(true)
+    );
+    const hideSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setIsKeyboardVisible(false)
+    );
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
   const [selectedEmoji, setSelectedEmoji] = useState('🚀');
   const [circleName, setCircleName] = useState('');
   const [selectedTheme, setSelectedTheme] = useState('blue');
   const [privacy, setPrivacy] = useState('open'); // open, invite, secret
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFriends, setSelectedFriends] = useState({});
+  const [users, setUsers] = useState([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const searchTimerRef = useRef(null);
   const [isCreating, setIsCreating] = useState(false);
 
-  const handleFriendToggle = (id) => {
+  // Fetch users from backend when search query changes (with debounce)
+  useEffect(() => {
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+
+    // If search is empty, load recommended/all users
+    searchTimerRef.current = setTimeout(async () => {
+      setIsLoadingUsers(true);
+      try {
+        const endpoint = searchQuery.trim()
+          ? `/users/search?q=${encodeURIComponent(searchQuery.trim())}`
+          : '/users/recommended';
+        const response = await apiClient.get(endpoint);
+        if (response.data?.success && Array.isArray(response.data.data)) {
+          // Filter out the current user from the list
+          const filteredUsers = response.data.data.filter(
+            (u) => u.uid !== currentUser?.uid
+          );
+          setUsers(filteredUsers);
+        } else {
+          setUsers([]);
+        }
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        setUsers([]);
+      } finally {
+        setIsLoadingUsers(false);
+      }
+    }, 400);
+
+    return () => {
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+      }
+    };
+  }, [searchQuery, currentUser?.uid]);
+
+  const handleFriendToggle = (uid) => {
     setSelectedFriends(prev => ({
       ...prev,
-      [id]: !prev[id]
+      [uid]: !prev[uid]
     }));
   };
 
@@ -105,11 +163,11 @@ export default function CreateCircleScreen() {
         const circleId = createdCircle?._id || createdCircle?.id;
         
         if (circleId) {
-          const selectedFriendIds = Object.keys(selectedFriends).filter(id => selectedFriends[id]);
-          if (selectedFriendIds.length > 0) {
+          const selectedUserUids = Object.keys(selectedFriends).filter(uid => selectedFriends[uid]);
+          if (selectedUserUids.length > 0) {
             await Promise.all(
-              selectedFriendIds.map(friendId => 
-                circleService.addMemberToCircle(circleId, friendId)
+              selectedUserUids.map(userUid => 
+                circleService.addMemberToCircle(circleId, userUid)
               )
             );
           }
@@ -150,16 +208,22 @@ export default function CreateCircleScreen() {
       styles.container, 
       { 
         paddingTop: insets.top,
-        paddingBottom: insets.bottom + 16
+        paddingBottom: isKeyboardVisible ? 0 : insets.bottom + 16
       }
     ]}>
       <StatusBar barStyle="light-content" />
       {renderHeader()}
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContainer}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        keyboardVerticalOffset={64}
       >
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* Choose Icon section */}
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionLabel}>CHOOSE ICON</Text>
@@ -308,32 +372,54 @@ export default function CreateCircleScreen() {
             />
           </View>
 
-          {/* Friends list */}
+          {/* Users list */}
           <View style={styles.friendsList}>
-            {FRIENDS.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase())).map((friend) => {
-              const isChecked = !!selectedFriends[friend.id];
-              return (
-                <TouchableOpacity 
-                  key={friend.id}
-                  activeOpacity={0.8}
-                  style={styles.friendRow}
-                  onPress={() => handleFriendToggle(friend.id)}
-                >
-                  <View style={styles.friendLeft}>
-                    <Image source={friend.avatar} style={styles.friendAvatar} />
-                    <Text style={styles.friendName}>{friend.name}</Text>
-                  </View>
-                  
-                  {/* Checkbox badge on right */}
-                  <View style={[
-                    styles.checkboxOuter,
-                    isChecked && styles.checkboxOuterChecked
-                  ]}>
-                    {isChecked && <Ionicons name="checkmark" size={12} color="#ffffff" />}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+            {isLoadingUsers ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color="#a78bfa" />
+                <Text style={styles.loadingText}>Searching users...</Text>
+              </View>
+            ) : users.length === 0 ? (
+              <View style={styles.loadingContainer}>
+                <Text style={styles.loadingText}>
+                  {searchQuery.trim() ? 'No users found' : 'No users available'}
+                </Text>
+              </View>
+            ) : (
+              users.map((user) => {
+                const isChecked = !!selectedFriends[user.uid];
+                const avatarSource = user.photoURL
+                  ? { uri: user.photoURL }
+                  : DEFAULT_AVATAR;
+                const displayName = user.displayName || user.username || 'Unknown User';
+                return (
+                  <TouchableOpacity 
+                    key={user.uid}
+                    activeOpacity={0.8}
+                    style={styles.friendRow}
+                    onPress={() => handleFriendToggle(user.uid)}
+                  >
+                    <View style={styles.friendLeft}>
+                      <Image source={avatarSource} style={styles.friendAvatar} />
+                      <View>
+                        <Text style={styles.friendName}>{displayName}</Text>
+                        {user.username && (
+                          <Text style={styles.friendUsername}>@{user.username}</Text>
+                        )}
+                      </View>
+                    </View>
+                    
+                    {/* Checkbox badge on right */}
+                    <View style={[
+                      styles.checkboxOuter,
+                      isChecked && styles.checkboxOuterChecked
+                    ]}>
+                      {isChecked && <Ionicons name="checkmark" size={12} color="#ffffff" />}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
           </View>
         </View>
 
@@ -358,11 +444,13 @@ export default function CreateCircleScreen() {
           </LinearGradient>
         </TouchableOpacity>
       </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   container: {
     flex: 1,
     backgroundColor: COLORS.background || '#1a0533',
@@ -568,6 +656,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     ...FONTS.bold,
     color: '#ffffff',
+  },
+  friendUsername: {
+    fontSize: 11,
+    color: 'rgba(167, 139, 250, 0.7)',
+    marginTop: 1,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  loadingText: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 13,
+    marginTop: 8,
   },
   checkboxOuter: {
     width: 22,

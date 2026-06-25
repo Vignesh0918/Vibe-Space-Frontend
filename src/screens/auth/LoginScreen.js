@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  KeyboardAvoidingView, 
-  Platform, 
-  ScrollView, 
+import {
+  StyleSheet,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   Dimensions,
-  Modal,
   Animated,
   ActivityIndicator,
   Image,
@@ -22,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AntDesign, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SIZES, FONTS } from '../../constants/theme';
 import { SCREENS } from '../../constants';
-import { loginWithRealGoogleThunk, loginWithGoogleThunk } from '../../store/slices/authSlice';
+import { loginWithRealGoogleThunk } from '../../store/slices/authSlice';
 
 const { width } = Dimensions.get('window');
 
@@ -38,26 +37,7 @@ const { width } = Dimensions.get('window');
  * - Footer terms agreement text
  * - Bottom Secure & Fluid informational badges
  */
-const MOCK_GOOGLE_ACCOUNTS = [
-  {
-    id: '1',
-    displayName: 'VibeSpace Dev',
-    email: 'dev@vibespace.app',
-    photoURL: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&h=100&q=80',
-  },
-  {
-    id: '2',
-    displayName: 'Aria Cosmic',
-    email: 'aria@vibespace.app',
-    photoURL: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&h=100&q=80',
-  },
-  {
-    id: '3',
-    displayName: 'Leo Nebula',
-    email: 'leo@nebula.io',
-    photoURL: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?auto=format&fit=crop&w=100&h=100&q=80',
-  },
-];
+
 
 export default function LoginScreen() {
   const navigation = useNavigation();
@@ -66,9 +46,6 @@ export default function LoginScreen() {
   const { isLoading } = useSelector((state) => state.auth);
 
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [showMockGoogleModal, setShowMockGoogleModal] = useState(false);
-  const [showCustomEmail, setShowCustomEmail] = useState(false);
-  const [customEmail, setCustomEmail] = useState('');
 
   const handleRealGoogleLogin = async () => {
     setGoogleLoading(true);
@@ -90,65 +67,19 @@ export default function LoginScreen() {
       }
     } catch (error) {
       setGoogleLoading(false);
-      // Check if it's a native module unsupported error
-      const isUnsupported = error && (
-        error.includes('only supported on a native development build') || 
-        error.includes('native') || 
-        error.includes('not supported') ||
-        error.includes('require')
-      );
-      if (isUnsupported) {
-        setShowMockGoogleModal(true);
-      } else {
-        Toast.show({ type: 'error', text1: 'Sign-In Failed', text2: error || 'Could not sign in with Google. Please try again.' });
-      }
+      Toast.show({ 
+        type: 'error', 
+        text1: 'Sign-In Failed', 
+        text2: error || 'Could not sign in with Google. Please try again.' 
+      });
     }
-  };
-
-  const handleMockAccountSelect = async (googleUser) => {
-    setShowMockGoogleModal(false);
-    setGoogleLoading(true);
-    try {
-      const result = await dispatch(loginWithGoogleThunk({ googleUser })).unwrap();
-      setGoogleLoading(false);
-
-      if (result.profileExists) {
-        // Existing user — Redux setUser already dispatched, auto-navigates
-      } else {
-        // New user — go to profile setup with Google details
-        navigation.navigate(SCREENS.PROFILE_SETUP, {
-          uid: result.userData.uid,
-          displayName: result.userData.displayName,
-          email: result.userData.email,
-          photoURL: result.userData.photoURL,
-          phoneNumber: null,
-        });
-      }
-    } catch (error) {
-      setGoogleLoading(false);
-      Toast.show({ type: 'error', text1: 'Sign-In Failed', text2: error || 'Could not sign in with simulated Google account. Please try again.' });
-    }
-  };
-
-  const handleCustomEmailSubmit = () => {
-    if (!customEmail.trim() || !customEmail.includes('@')) {
-      Toast.show({ type: 'error', text1: 'Invalid Email', text2: 'Please enter a valid email address.' });
-      return;
-    }
-    const name = customEmail.split('@')[0];
-    const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
-    handleMockAccountSelect({
-      displayName: formattedName,
-      email: customEmail.trim().toLowerCase(),
-      photoURL: null,
-    });
   };
 
 
   return (
     <View style={[
-      styles.wrapper, 
-      { 
+      styles.wrapper,
+      {
         paddingTop: insets.top,
         paddingBottom: insets.bottom,
         paddingLeft: insets.left,
@@ -159,11 +90,12 @@ export default function LoginScreen() {
         colors={[COLORS.background || '#1a0533', '#0e031a']}
         style={styles.gradientContainer}
       >
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
           style={styles.flex}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 60}
         >
-          <ScrollView 
+          <ScrollView
             contentContainerStyle={styles.scrollContainer}
             showsVerticalScrollIndicator={false}
           >
@@ -232,94 +164,6 @@ export default function LoginScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
-
-      {/* Simulated Google Account Chooser Modal */}
-      <Modal
-        visible={showMockGoogleModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowMockGoogleModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.googleModalContainer}>
-            <View style={styles.googleModalHeader}>
-              <View style={styles.googleModalLogoRow}>
-                <AntDesign name="google" size={24} color="#818cf8" />
-                <Text style={styles.googleModalTitle}>Sign in with Google</Text>
-              </View>
-              <Text style={styles.googleModalSubtitle}>to continue to VibeSpace</Text>
-            </View>
-
-            <View style={styles.googleModalDivider} />
-
-            <ScrollView style={styles.googleAccountsList} bounces={false}>
-              {MOCK_GOOGLE_ACCOUNTS.map((account) => (
-                <TouchableOpacity
-                  key={account.id}
-                  style={styles.googleAccountItem}
-                  activeOpacity={0.7}
-                  onPress={() => handleMockAccountSelect(account)}
-                >
-                  <View style={[styles.googleAccountAvatar, { backgroundColor: 'rgba(129, 140, 248, 0.15)' }]}>
-                    {account.photoURL ? (
-                      <Image source={{ uri: account.photoURL }} style={styles.googleAccountPhoto} />
-                    ) : (
-                      <Text style={styles.googleAccountInitials}>
-                        {account.displayName.charAt(0)}
-                      </Text>
-                    )}
-                  </View>
-                  <View style={styles.googleAccountInfo}>
-                    <Text style={styles.googleAccountName}>{account.displayName}</Text>
-                    <Text style={styles.googleAccountEmail}>{account.email}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-
-              <TouchableOpacity
-                style={styles.addAccountButton}
-                activeOpacity={0.7}
-                onPress={() => setShowCustomEmail(!showCustomEmail)}
-              >
-                <View style={styles.addAccountIconBg}>
-                  <AntDesign name="plus" size={16} color="#818cf8" />
-                </View>
-                <Text style={styles.addAccountText}>Use another account</Text>
-              </TouchableOpacity>
-
-              {showCustomEmail && (
-                <View style={styles.customEmailSection}>
-                  <Text style={styles.customEmailTitle}>Sign in with custom email</Text>
-                  <View style={styles.customEmailRow}>
-                    <TextInput
-                      placeholder="Enter mock Google email..."
-                      placeholderTextColor="rgba(255, 255, 255, 0.35)"
-                      value={customEmail}
-                      onChangeText={setCustomEmail}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      style={styles.customEmailInput}
-                    />
-                    <TouchableOpacity
-                      style={styles.customEmailSubmit}
-                      onPress={handleCustomEmailSubmit}
-                      activeOpacity={0.7}
-                    >
-                      <AntDesign name="arrowright" size={18} color="#ffffff" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-            </ScrollView>
-
-            <View style={styles.googleModalFooter}>
-              <Text style={styles.googleModalFooterText}>
-                To continue, Google will share your name, email address, language preference, and profile picture with VibeSpace.
-              </Text>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }

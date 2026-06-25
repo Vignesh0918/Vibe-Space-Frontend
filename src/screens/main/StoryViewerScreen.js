@@ -33,15 +33,17 @@ import { useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS, SHADOWS } from '../../constants/theme';
+import { SCREENS } from '../../constants';
 import { getStoryViewers, markStoryViewed } from '../../services/storyService';
 import { Audio } from 'expo-av';
 import SongOverlay from '../../components/story/SongOverlay';
 import { getOrCreateDMChat, sendMessage } from '../../services/chatService';
 import { createNotification } from '../../services/notificationService';
 import Toast from 'react-native-toast-message';
+import apiClient from '../../config/api';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const STORY_DURATION = 6000; // ms per story slide
+const STORY_DURATION = 20000; // ms per story slide
 const PROGRESS_BAR_GAP = 4;
 
 /* ------------------------------------------------------------------ */
@@ -130,6 +132,7 @@ export default function StoryViewerScreen() {
           userId: s.userId,
           circleId: s.circleId,
           song: s.song,
+          mentionedUserId: s.mentionedUserId || null,
         };
       })
     };
@@ -148,6 +151,7 @@ export default function StoryViewerScreen() {
           trending: false,
           userId: params.storyUserId,
           song: params.storySong || null,
+          mentionedUserId: params.storyMentionedUserId || null,
         }
       ]
     };
@@ -162,6 +166,8 @@ export default function StoryViewerScreen() {
   const [viewerCount, setViewerCount] = useState(0);
   const [likedSlides, setLikedSlides] = useState({});
   const [isPlayingSong, setIsPlayingSong] = useState(false);
+  const [mentionedUser, setMentionedUser] = useState(null);
+  const [isLoadingMention, setIsLoadingMention] = useState(false);
 
   const slide = story.slides[slideIndex];
   const isCurrentSlideLiked = likedSlides[slide?.id] || false;
@@ -324,6 +330,31 @@ export default function StoryViewerScreen() {
     };
     markViewed();
   }, [slide?.id]);
+
+  // Fetch mentioned user profile details
+  useEffect(() => {
+    let active = true;
+    const fetchMentionedUser = async () => {
+      setMentionedUser(null);
+      if (slide?.mentionedUserId) {
+        setIsLoadingMention(true);
+        try {
+          const res = await apiClient.get(`/users/${slide.mentionedUserId}`);
+          if (res.data?.success && res.data.data && active) {
+            setMentionedUser(res.data.data);
+          }
+        } catch (err) {
+          console.warn('Failed to fetch mentioned user in story:', err);
+        } finally {
+          if (active) setIsLoadingMention(false);
+        }
+      }
+    };
+    fetchMentionedUser();
+    return () => {
+      active = false;
+    };
+  }, [slideIndex, slide?.mentionedUserId]);
 
   const goNext = () => {
     if (slideIndex < totalSlides - 1) {
@@ -635,6 +666,26 @@ export default function StoryViewerScreen() {
         <View style={StyleSheet.absoluteFillObject} />
       </TouchableWithoutFeedback>
 
+      {/* Mention Sticker Overlay */}
+      {mentionedUser && (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => {
+            stopAndUnloadSound();
+            navigation.navigate(SCREENS.USER_PROFILE, { userId: mentionedUser.uid });
+          }}
+          style={styles.storyMentionStickerContainer}
+        >
+          <View style={styles.storyMentionSticker}>
+            <Image 
+              source={mentionedUser.photoURL ? { uri: mentionedUser.photoURL } : require('../../../assets/default_avatar.png')} 
+              style={styles.storyMentionAvatar} 
+            />
+            <Text style={styles.storyMentionText}>@{mentionedUser.username}</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+
       {/* Top UI */}
       <View style={styles.topOverlay} pointerEvents="box-none">
         {renderProgressBars()}
@@ -807,17 +858,48 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(167, 139, 250, 0.15)',
   },
   sendOuter: {
-    marginLeft: 8,
     borderRadius: 21,
     overflow: 'hidden',
-    ...SHADOWS.small,
+    marginLeft: 12,
   },
   sendGradient: {
     width: 42,
     height: 42,
-    borderRadius: 21,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 21,
+  },
+  storyMentionStickerContainer: {
+    position: 'absolute',
+    bottom: SCREEN_H * 0.28,
+    alignSelf: 'center',
+    zIndex: 15,
+  },
+  storyMentionSticker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  storyMentionAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    marginRight: 6,
+  },
+  storyMentionText: {
+    color: '#ffffff',
+    fontSize: 13,
+    ...FONTS.bold,
   },
 
   /* Viewers badge */
